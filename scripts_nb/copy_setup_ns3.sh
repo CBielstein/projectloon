@@ -49,13 +49,13 @@ echo "alias goloon=\"cd \$NS3DIR/ProjectLoon\"" >> ~/.profile
 echo "function waff {" >> ~/.profile
 echo "    CWD=\"\$PWD\"" >> ~/.profile
 echo "    cd \$NS3DIR >/dev/null" >> ~/.profile
-echo "   ./waf $*" >> ~/.profile
+echo "   ./waf \$*" >> ~/.profile
 echo "    cd - >/dev/null" >> ~/.profile
 echo "  }" >> ~/.profile
 echo "function waffc {" >> ~/.profile
 echo "    CWD=\"\$PWD\"" >> ~/.profile
 echo "    cd \$NS3DIR >/dev/null" >> ~/.profile
-echo "   ./waf --cwd=\"$CWD\" $*" >> ~/.profile
+echo "   ./waf --cwd=\"$CWD\" \$*" >> ~/.profile
 echo "    cd - >/dev/null" >> ~/.profile
 echo "  }" >> ~/.profile
 
