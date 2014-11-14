@@ -46,10 +46,12 @@ echo "" >> ~/.profile
 echo "# Added by Cameron's script for ns3 and ProjectLoon work" >> ~/.profile
 echo "export NS3DIR=\"$PWD\"" >> ~/.profile
 echo "alias goloon=\"cd $PWD/ProjectLoon\"" >> ~/.profile
-echo "function waff { cd $NS3DIR && ./waf $* ; }"
+echo "function waff { cd $NS3DIR && ./waf $* ; }" >> ~/.profile
 echo "function waffc {" >> ~/.profile
-echo "    CWD=\"$PWD\"" >> ~/.profile
-echo "    cd $NS3DIR >/dev/null" >> ~/.profile
+echo "    CWD=\"\$PWD\"" >> ~/.profile
+echo "    cd \$NS3DIR >/dev/null" >> ~/.profile
 echo "   ./waf --cwd=\"$CWD\" $*" >> ~/.profile
 echo "    cd - >/dev/null" >> ~/.profile
 echo "  }" >> ~/.profile
+
+source ~/.profile
