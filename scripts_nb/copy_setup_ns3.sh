@@ -15,22 +15,22 @@
 
 # Here we goooo
 
-# copy ns3 to current 
-echo "Copy ns3 to $PWD"
+# copy bake and ns3 to current 
+echo "Coping bake & ns3 to $PWD..."
 cp -r /ns3/bake $PWD/bake
 
 # configure waf and let it do its thing
-echo "Reconfigure waf for some reason"
+echo "Reconfiguring waf for some reason."
 cd bake/source/ns-3.21
 ./waf configure --enable-examples --enable-tests
 ./waf
 
 # check out the github repo
-echo "Clone the ProjectLoon repo"
+echo "Cloning the ProjectLoon repo."
 git clone https://github.com/CBielstein/ProjectLoon.git
 
 # replace wscript
-echo "Update the wscript"
+echo "Updating the wscript."
 rm wscript
 cp ProjectLoon/scripts/wscript ./
 
@@ -45,8 +45,13 @@ echo "  goloon: alias for a cd to the ProjectLoon folder"
 echo "" >> ~/.profile
 echo "# Added by Cameron's script for ns3 and ProjectLoon work" >> ~/.profile
 echo "export NS3DIR=\"$PWD\"" >> ~/.profile
-echo "alias goloon=\"cd $PWD/ProjectLoon\"" >> ~/.profile
-echo "function waff { cd $NS3DIR && ./waf $* ; }" >> ~/.profile
+echo "alias goloon=\"cd \$NS3DIR/ProjectLoon\"" >> ~/.profile
+echo "function waff {" >> ~/.profile
+echo "    CWD=\"\$PWD\"" >> ~/.profile
+echo "    cd \$NS3DIR >/dev/null" >> ~/.profile
+echo "   ./waf $*" >> ~/.profile
+echo "    cd - >/dev/null" >> ~/.profile
+echo "  }" >> ~/.profile
 echo "function waffc {" >> ~/.profile
 echo "    CWD=\"\$PWD\"" >> ~/.profile
 echo "    cd \$NS3DIR >/dev/null" >> ~/.profile

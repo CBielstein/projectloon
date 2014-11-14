@@ -663,7 +663,7 @@ def add_loon_programs(bld):
     for filename in os.listdir("ProjectLoon"):
         if filename.startswith('.') or filename == 'CVS':
 	    continue
-        if os.path.isdir(os.path.join("ProjectLoon", filename)):
+        if os.path.isdir(os.path.join("ProjectLoon", filename)) and not filename.endswith('_nb'): # ecludes "no build" directories
             obj = bld.create_ns3_program(filename, all_modules)
             obj.path = obj.path.find_dir('ProjectLoon').find_dir(filename)
             obj.source = obj.path.ant_glob('*.cc')
