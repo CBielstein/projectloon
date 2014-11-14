@@ -656,6 +656,29 @@ def add_scratch_programs(bld):
             obj.name = obj.target
             obj.install_path = None
 
+def add_loon_programs(bld):
+    all_modules = [mod[len("ns3-"):] for mod in bld.env['NS3_ENABLED_MODULES']]
+    if not os.path.exists("ProjectLoon") or not os.path.isdir("ProjectLoon"):
+        return
+    for filename in os.listdir("ProjectLoon"):
+        if filename.startswith('.') or filename == 'CVS':
+	    continue
+        if os.path.isdir(os.path.join("ProjectLoon", filename)):
+            obj = bld.create_ns3_program(filename, all_modules)
+            obj.path = obj.path.find_dir('ProjectLoon').find_dir(filename)
+            obj.source = obj.path.ant_glob('*.cc')
+            obj.target = filename
+            obj.name = obj.target
+            obj.install_path = None
+        elif filename.endswith(".cc"):
+            name = filename[:-len(".cc")]
+            obj = bld.create_ns3_program(name, all_modules)
+            obj.path = obj.path.find_dir('ProjectLoon')
+            obj.source = filename
+            obj.target = name
+            obj.name = obj.target
+            obj.install_path = None
+
 def _get_all_task_gen(self):
     for group in self.groups:
         for taskgen in group:
@@ -755,6 +778,7 @@ def build(bld):
 
     add_examples_programs(bld)
     add_scratch_programs(bld)
+    add_loon_programs(bld)
 
     if env['NS3_ENABLED_MODULES']:
         modules = env['NS3_ENABLED_MODULES']
