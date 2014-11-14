@@ -17,13 +17,13 @@
 
 # copy ns3 to current 
 echo "Copy ns3 to $PWD"
-#cp -r /ns3/bake $PWD/bake
+cp -r /ns3/bake $PWD/bake
 
 # configure waf and let it do its thing
 echo "Reconfigure waf for some reason"
-#cd bake/source/ns-3.12
-#./waf configure --enable-examples --enable-tests
-#./waf
+cd bake/source/ns-3.12
+./waf configure --enable-examples --enable-tests
+./waf
 
 # check out the github repo
 echo "Clone the ProjectLoon repo"
@@ -31,21 +31,23 @@ git clone https://github.com/CBielstein/ProjectLoon.git
 
 # replace wscript
 echo "Update the wscript"
-#rm wscript
-#cp ProjectLoon/scripts/wscript ./
+rm wscript
+cp ProjectLoon/scripts/wscript ./
 
 # modifying .profile to add handy commands, hope you're cool with this
-# my makefiles will probably depend on waff
+# waff and waffc are for your own convenience. Makefiles should referece waf more directly. Probably with waf --cwd or maybe $NS3DIR
 echo "Append to .profile"
-echo "Commands added: waff, goloon"
-echo "  waff: runs waf from wherever you are and sends output to your current folder. I think this is desirable, but not sure."
+echo "Commands added: waff, waffc, goloon"
+echo "  waff: runs waf from wherever you are."
+echo "  waffc: runs waf from wherever you are and sends output to your current folder. I think this is desirable, but not sure."
 echo "  goloon: alias for a cd to the ProjectLoon folder"
 
 echo "" >> ~/.profile
 echo "# Added by Cameron's script for ns3 and ProjectLoon work" >> ~/.profile
 echo "export NS3DIR=\"$PWD\"" >> ~/.profile
 echo "alias goloon=\"cd $PWD/ProjectLoon\"" >> ~/.profile
-echo "function waff {" >> ~/.profile
+echo "function waff { cd $NS3DIR && ./waf $* ; }"
+echo "function waffc {" >> ~/.profile
 echo "    CWD=\"$PWD\"" >> ~/.profile
 echo "    cd $NS3DIR >/dev/null" >> ~/.profile
 echo "   ./waf --cwd=\"$CWD\" $*" >> ~/.profile
