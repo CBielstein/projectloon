@@ -32,7 +32,7 @@ git clone https://github.com/CBielstein/ProjectLoon.git
 # replace wscript
 echo "Updating the wscript."
 rm wscript
-cp ProjectLoon/scripts/wscript ./
+cp ProjectLoon/scripts_nb/wscript ./
 
 # modifying .profile to add handy commands, hope you're cool with this
 # waff and waffc are for your own convenience. Makefiles should referece waf more directly. Probably with waf --cwd or maybe $NS3DIR
