@@ -21,7 +21,7 @@ cp -r /ns3/bake $PWD/bake
 
 # configure waf and let it do its thing
 echo "Reconfigure waf for some reason"
-cd bake/source/ns-3.12
+cd bake/source/ns-3.21
 ./waf configure --enable-examples --enable-tests
 ./waf
 
