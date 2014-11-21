@@ -28,5 +28,7 @@ def build(bld):
     if bld.env.ENABLE_EXAMPLES:
         bld.recurse('examples')
 
+    bld.recurse('src');
+
     # bld.ns3_python_bindings()
 
