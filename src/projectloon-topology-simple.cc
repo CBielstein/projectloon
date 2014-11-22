@@ -68,6 +68,7 @@
 #include <math.h>
 
 // LTE has 20km radius on ground, 20km in the air, which yields 28.284km signal range from the balloon
+// Special thanks to Hudson Bielstein for the computation
 #define LTE_SIGNAL_RADIUS 28284.0
 // ISM between balloons has 40km radius in air
 #define ISM_SIGNAL_RADIUS 40000.0
