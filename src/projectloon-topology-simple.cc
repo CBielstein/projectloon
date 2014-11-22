@@ -65,8 +65,18 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <math.h>
 
-NS_LOG_COMPONENT_DEFINE ("WifiSimpleAdhoc");
+// LTE has 20km radius on ground, 20km in the air, which yields 28.284km signal range from the balloon
+#define LTE_SIGNAL_RADIUS 28284.0
+// ISM between balloons has 40km radius in air
+#define ISM_SIGNAL_RADIUS 40000.0
+// Balloon top speed is ~150 mph ~= 67 m/s
+#define BALLOON_TOP_SPEED 67.0
+// Length in seconds between updates of balloon position
+#define BALLOON_POSITION_UPDATE_RATE 0.5
+
+NS_LOG_COMPONENT_DEFINE ("LoonTopologySimple");
 
 using namespace ns3;
 
@@ -74,16 +84,7 @@ void ReceivePacket (Ptr<Socket> socket)
 {
   while (socket->Recv ())
     {
-      NS_LOG_UNCOND ("Received one packet!");
-
-      Ptr<ConstantVelocityMobilityModel> mob_mod = socket->GetNode()->GetObject<ConstantVelocityMobilityModel>();
-      Vector3D pos = mob_mod->GetPosition();
-      Vector3D speed = mob_mod->GetVelocity();
-      
-      NS_LOG_UNCOND ("At " << Simulator::Now ().GetSeconds () << " node " << socket->GetNode()->GetId() << ": Position(" << pos.x << ", " << pos.y << ", " << pos.z << ");   Speed(" << speed.x << ", " << speed.y << ", " << speed.z << ")" << std::endl);
-      
-      NS_LOG_UNCOND ("Change directions.");
-      mob_mod->SetVelocity(Vector3D(speed.x+1, 0, 0));
+      NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() << "!");
     }
 }
 
@@ -102,9 +103,95 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
     }
 }
 
+// I don't know why I have to do this...
+static Vector3D Normalize(const Vector3D& v, double scale)
+{
+    Vector3D ret_val(v);
+
+    // calculate length
+    double length = CalculateDistance(Vector3D(0.0, 0.0, 0.0), ret_val);
+
+    // normalize
+    ret_val.x /= length;
+    ret_val.y /= length;
+    ret_val.z /= length;
+
+    // scale
+    ret_val.x *= scale;
+    ret_val.y *= scale;
+    ret_val.z *= scale;
+
+    return ret_val;
+}
+
+// Takes the nodecontainers for the balloons and the gateways (on the ground) and finds the correct movement for each balloon
+static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer& gateways)
+{
+    // ensure we aren't passed empty containers
+    if (balloons.GetN() < 1 || gateways.GetN() < 1)
+    {
+        NS_LOG(ns3::LOG_ERROR, "Entered UpdateBalloonPositions with balloons size: " << balloons.GetN()
+                << " and gateways size: " << gateways.GetN());
+        return;
+    }
+
+    // for each balloon, find closest gateway and move toward it at speed
+    for (unsigned int i = 0; i < balloons.GetN(); ++i)
+    {
+        Ptr<ConstantVelocityMobilityModel> balloon_mobility = balloons.Get(i)->GetObject<ConstantVelocityMobilityModel>();
+        Vector3D balloon_position = balloon_mobility->GetPosition();
+
+        NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << " balloon " << balloons.Get(i)->GetId()
+                        << ": Position: " << balloon_position 
+                        << "   Speed:" << balloon_mobility->GetVelocity());
+
+        Ptr<Node> nearest_node = gateways.Get(0);
+        Ptr<Node> temp_node = NULL;
+
+        double nearest_distance = CalculateDistance(balloon_mobility->GetPosition(), nearest_node->GetObject<MobilityModel>()->GetPosition());
+        double temp_distance;
+
+        for (unsigned int j = 1; j < gateways.GetN(); ++i)
+        {
+            temp_node = gateways.Get(j);
+            temp_distance = CalculateDistance(balloon_mobility->GetPosition(), temp_node->GetObject<MobilityModel>()->GetPosition());
+            if (temp_distance < nearest_distance)
+            {
+                nearest_distance = temp_distance;
+                nearest_node = temp_node;
+            }
+        }
+
+        // if in range, stop moving
+        if (nearest_distance <= LTE_SIGNAL_RADIUS)
+        {
+            balloon_mobility->SetVelocity(Vector3D(0.0, 0.0, 0.0));
+            NS_LOG(ns3::LOG_DEBUG, "Moving with velocity (0.0, 0.0, 0.0)");
+        }
+        else //otherwise, correct course
+        {
+            // find normalized direction
+            Vector3D node_position = nearest_node->GetObject<MobilityModel>()->GetPosition();
+            Vector3D direction(node_position.x - balloon_position.x, node_position.y - balloon_position.y, node_position.z - balloon_position.z);
+            direction.z = 0; // don't move up or down
+            direction = Normalize(direction, BALLOON_TOP_SPEED);
+
+            // move in that direction at top speed
+            balloon_mobility->SetVelocity(direction);
+
+            NS_LOG(ns3::LOG_DEBUG, "Moving with velocity " << direction);
+        }
+    }
+    
+    // schedule this to happen again in BALLOON_POSITION_UPDATE_RATE seconds
+    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
+}
 
 int main (int argc, char *argv[])
 {
+  // Enable all logging for now, since this is a test
+  LogComponentEnable("LoonTopologySimple", ns3::LOG_DEBUG);
+
   std::string phyMode ("DsssRate1Mbps");
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
@@ -133,8 +220,12 @@ int main (int argc, char *argv[])
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", 
                       StringValue (phyMode));
 
-  NodeContainer c;
-  c.Create (2);
+  NodeContainer balloons;
+  balloons.Create (2);
+
+  // gateways will hold our internet access points on the ground
+  NodeContainer gateways;
+  gateways.Create(1);
 
   // The below set of helpers will help us to put together the wifi NICs we want
   WifiHelper wifi;
@@ -165,20 +256,28 @@ int main (int argc, char *argv[])
                                 "ControlMode",StringValue (phyMode));
   // Set it to adhoc mode
   wifiMac.SetType ("ns3::AdhocWifiMac");
-  NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, c);
+  NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, balloons);
 
   // Note that with FixedRssLossModel, the positions below are not 
   // used for received signal strength. 
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
-  positionAlloc->Add (Vector (0.0, 0.0, 0.0));
-  positionAlloc->Add (Vector (5.0, 0.0, 0.0));
+  positionAlloc->Add (Vector (-40000.0, 0.0, 20000.0));
+  positionAlloc->Add (Vector (20000.0, -20000.0, 20000.0));
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
-  mobility.Install (c);
+  mobility.Install (balloons);
+
+  // Set position of ground links
+  MobilityHelper gateway_mob;
+  Ptr<ListPositionAllocator> gateway_position_alloc = CreateObject<ListPositionAllocator>();
+  gateway_position_alloc->Add(Vector(0.0, 0.0, 0.0)); // right on the origin
+  gateway_mob.SetPositionAllocator(gateway_position_alloc);
+  gateway_mob.SetMobilityModel("ns3::ConstantPositionMobilityModel");
+  gateway_mob.Install(gateways);
 
   InternetStackHelper internet;
-  internet.Install (c);
+  internet.Install (balloons);
 
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
@@ -186,12 +285,12 @@ int main (int argc, char *argv[])
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
-  Ptr<Socket> recvSink = Socket::CreateSocket (c.Get (0), tid);
+  Ptr<Socket> recvSink = Socket::CreateSocket (balloons.Get (0), tid);
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
   recvSink->Bind (local);
   recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
 
-  Ptr<Socket> source = Socket::CreateSocket (c.Get (1), tid);
+  Ptr<Socket> source = Socket::CreateSocket (balloons.Get (1), tid);
   InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
   source->SetAllowBroadcast (true);
   source->Connect (remote);
@@ -206,6 +305,10 @@ int main (int argc, char *argv[])
                                   Seconds (1.0), &GenerateTraffic, 
                                   source, packetSize, numPackets, interPacketInterval);
 
+  // update position twice per second
+  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
+
+  Simulator::Stop(Seconds(600.0));
   Simulator::Run ();
   Simulator::Destroy ();
 
