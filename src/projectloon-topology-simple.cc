@@ -82,6 +82,10 @@ NS_LOG_COMPONENT_DEFINE ("LoonTopologySimple");
 
 using namespace ns3;
 
+NetDeviceContainer ueDevs;
+NetDeviceContainer enbDevs;
+Ptr<LteHelper> lteHelper;
+
 void ReceivePacket (Ptr<Socket> socket)
 {
   while (socket->Recv ())
@@ -161,6 +165,11 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
             {
                 nearest_distance = temp_distance;
                 nearest_node = temp_node;
+                // Attach the gateway to the balloon
+                lteHelper->Attach (ueDevs.Get(i), enbDevs.Get(j));
+                enum EpsBearer::Qci q = EpsBearer::GBR_CONV_VOICE;
+                EpsBearer bearer (q);
+                lteHelper->ActivateDataRadioBearer (ueDevs, bearer);
             }
         }
 
@@ -281,14 +290,12 @@ int main (int argc, char *argv[])
   gateway_mob.Install(gateways);
 
   // LTEHelper is needed for performing certain LTE operations
-  Ptr<LteHelper> lteHelper = CreateObject<LteHelper> ();
+  lteHelper = CreateObject<LteHelper> ();
 
   // Install LTE protocol stack on the balloons
-  NetDeviceContainer enbDevs;
   enbDevs = lteHelper->InstallEnbDevice (balloons);
 
   // Install LTE protocol stack on gateways
-  NetDeviceContainer ueDevs;
   ueDevs = lteHelper->InstallUeDevice (gateways);
  
   InternetStackHelper internet;
