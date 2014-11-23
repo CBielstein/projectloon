@@ -60,6 +60,7 @@
 #include "ns3/config-store-module.h"
 #include "ns3/wifi-module.h"
 #include "ns3/internet-module.h"
+#include "ns3/lte-module.h"
 
 #include <iostream>
 #include <fstream>
@@ -221,10 +222,12 @@ int main (int argc, char *argv[])
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", 
                       StringValue (phyMode));
 
+  // note: in the LTE model, balloons are eNBs
   NodeContainer balloons;
   balloons.Create (2);
 
   // gateways will hold our internet access points on the ground
+  // note: in the LTE model, gateways are UEs
   NodeContainer gateways;
   gateways.Create(1);
 
@@ -277,6 +280,17 @@ int main (int argc, char *argv[])
   gateway_mob.SetMobilityModel("ns3::ConstantPositionMobilityModel");
   gateway_mob.Install(gateways);
 
+  // LTEHelper is needed for performing certain LTE operations
+  Ptr<LteHelper> lteHelper = CreateObject<LteHelper> ();
+
+  // Install LTE protocol stack on the balloons
+  NetDeviceContainer enbDevs;
+  enbDevs = lteHelper->InstallEnbDevice (balloons);
+
+  // Install LTE protocol stack on gateways
+  NetDeviceContainer ueDevs;
+  ueDevs = lteHelper->InstallUeDevice (gateways);
+ 
   InternetStackHelper internet;
   internet.Install (balloons);
 
