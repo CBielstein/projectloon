@@ -323,6 +323,24 @@ int main (int argc, char *argv[])
   // Output what we are doing
   NS_LOG_UNCOND ("Testing " << numPackets  << " packets sent with receiver rss " << rss  << " and interval " << interval);
 
+  Ptr<LteEnbNetDevice> balloon;
+  Ptr<LteUeNetDevice> gateway;
+  balloon = enbDevs.Get (0)->GetObject<LteEnbNetDevice> ();
+  gateway = ueDevs.Get (0)->GetObject<LteUeNetDevice> ();
+
+  Ptr<Packet> p = Create<Packet> (1);
+  Mac48Address to = Mac48Address::ConvertFrom (balloon->GetAddress ());
+
+  bool succ = gateway->Send (p,to, 16);
+ 
+  if(succ)
+  {
+    NS_LOG_UNCOND ("Packet send successful!");
+  }
+  else
+  {
+    NS_LOG_UNCOND ("Packet send failed.");
+  }
   Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTraffic, 
                                   source, packetSize, numPackets, interPacketInterval);
@@ -330,7 +348,7 @@ int main (int argc, char *argv[])
   // update position twice per second
   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 
-  Simulator::Stop(Seconds(600.0));
+  Simulator::Stop(Seconds(10.0));
   Simulator::Run ();
   Simulator::Destroy ();
 
