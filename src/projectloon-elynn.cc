@@ -207,6 +207,15 @@ static void createReceiver(Ptr<Node> receiver) {
   recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
 }
 
+static Ptr<Socket> createSender(Ptr<Node> sender) {
+  TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
+  Ptr<Socket> source = Socket::CreateSocket (sender, tid);
+  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
+  source->SetAllowBroadcast (true);
+  source->Connect (remote);
+  return source;
+}
+
 int main (int argc, char *argv[])
 {
   // Enable all logging for now, since this is a test
@@ -325,10 +334,7 @@ int main (int argc, char *argv[])
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
 
   // First node is the sender
-  Ptr<Socket> source = Socket::CreateSocket (balloons.Get (0), tid);
-  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
-  source->SetAllowBroadcast (true);
-  source->Connect (remote);
+  Ptr<Socket> source = createSender(balloons.Get (0));
 
   // Create 2 receiving nodes
   createReceiver(balloons.Get (1));
