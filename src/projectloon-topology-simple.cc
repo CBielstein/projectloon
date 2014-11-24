@@ -198,6 +198,22 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
     Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 }
 
+static void SendPacketFromGateway(Ptr<LteUeNetDevice>& gateway, const Address& to)
+{
+  Ptr<Packet> p = Create<Packet> (1);
+
+  // The last parameter here is supposed to be protocolNumber, but I haven't figured out how to use that yet
+  bool succ = gateway->Send(p, to, 16);
+  if(succ)
+  {
+     NS_LOG_UNCOND("Packet send successful!");
+  }
+  else
+  {
+     NS_LOG_UNCOND("Packet send failed.");
+  }
+}
+
 int main (int argc, char *argv[])
 {
   // Enable all logging for now, since this is a test
@@ -323,27 +339,19 @@ int main (int argc, char *argv[])
   // Output what we are doing
   NS_LOG_UNCOND ("Testing " << numPackets  << " packets sent with receiver rss " << rss  << " and interval " << interval);
 
-  Ptr<LteEnbNetDevice> balloon;
-  Ptr<LteUeNetDevice> gateway;
-  balloon = enbDevs.Get (0)->GetObject<LteEnbNetDevice> ();
-  gateway = ueDevs.Get (0)->GetObject<LteUeNetDevice> ();
 
-  Ptr<Packet> p = Create<Packet> (1);
+  Ptr<LteUeNetDevice> gateway;
+  gateway = ueDevs.Get (0)->GetObject<LteUeNetDevice> ();
+  
+  Ptr<LteEnbNetDevice> balloon;
+  balloon = enbDevs.Get (0)->GetObject<LteEnbNetDevice> ();
   Mac48Address to = Mac48Address::ConvertFrom (balloon->GetAddress ());
 
-  bool succ = gateway->Send (p,to, 16);
- 
-  if(succ)
-  {
-    NS_LOG_UNCOND ("Packet send successful!");
-  }
-  else
-  {
-    NS_LOG_UNCOND ("Packet send failed.");
-  }
   Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTraffic, 
                                   source, packetSize, numPackets, interPacketInterval);
+  
+  Simulator::Schedule (Seconds (5.0), &SendPacketFromGateway, gateway, to);
 
   // update position twice per second
   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
