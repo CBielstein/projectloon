@@ -198,6 +198,15 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
     Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 }
 
+// Creates a receiver!
+static void createReceiver(Ptr<Node> receiver) {
+  TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
+  Ptr<Socket> recvSink = Socket::CreateSocket (receiver, tid);
+  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
+  recvSink->Bind (local);
+  recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
+}
+
 int main (int argc, char *argv[])
 {
   // Enable all logging for now, since this is a test
@@ -260,6 +269,7 @@ int main (int argc, char *argv[])
   // The below FixedRssLossModel will cause the rss to be fixed regardless
   // of the distance between the two stations, and the transmit power
   wifiChannel.AddPropagationLoss ("ns3::FixedRssLossModel","Rss",DoubleValue (rss));
+  // MaxRange = the maximum transmission range.
   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel", "MaxRange", DoubleValue(ISM_SIGNAL_RADIUS));
   wifiPhy.SetChannel (wifiChannel.Create ());
 
@@ -317,16 +327,8 @@ int main (int argc, char *argv[])
   source->Connect (remote);
 
   // Create 2 receiving nodes
-  Ptr<Socket> recvSink = Socket::CreateSocket (balloons.Get (1), tid);
-  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
-  recvSink->Bind (local);
-  recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
-
-  Ptr<Socket> recvSink2 = Socket::CreateSocket (balloons.Get (2), tid);
-  InetSocketAddress local2 = InetSocketAddress (Ipv4Address::GetAny (), 80);
-  recvSink2->Bind (local2);
-  recvSink2->SetRecvCallback (MakeCallback (&ReceivePacket));
-
+  createReceiver(balloons.Get (1));
+  createReceiver(balloons.Get (2));
     // Tracing
   wifiPhy.EnablePcap ("wifi-simple-adhoc", devices);
 
