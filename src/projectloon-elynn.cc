@@ -177,7 +177,7 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
         if (nearest_distance <= LTE_SIGNAL_RADIUS)
         {
             balloon_mobility->SetVelocity(Vector3D(0.0, 0.0, 0.0));
-//            NS_LOG(ns3::LOG_DEBUG, "Moving with velocity (0.0, 0.0, 0.0)");
+            //NS_LOG(ns3::LOG_DEBUG, "Moving with velocity (0.0, 0.0, 0.0)");
         }
         else //otherwise, correct course
         {
@@ -190,7 +190,7 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
             // move in that direction at top speed
             balloon_mobility->SetVelocity(direction);
 
-//            NS_LOG(ns3::LOG_DEBUG, "Moving with velocity " << direction);
+            //NS_LOG(ns3::LOG_DEBUG, "Moving with velocity " << direction);
         }
     }
     
