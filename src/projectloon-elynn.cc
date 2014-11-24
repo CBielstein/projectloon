@@ -215,7 +215,8 @@ int main (int argc, char *argv[])
   std::string phyMode ("DsssRate1Mbps");
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
-  uint32_t numPackets = 1;
+  // Increase number of packets to demonstrate sending ranges over time
+  uint32_t numPackets = 15;
   double interval = 1.0; // seconds
   bool verbose = false;
 
@@ -286,8 +287,11 @@ int main (int argc, char *argv[])
   // used for received signal strength. 
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
-  positionAlloc->Add (Vector (20000.0, -20000.0, 20000.0));
-  positionAlloc->Add (Vector (-40000.0, 0.0, 20000.0));
+  // Node 0 (sender) starts ON the gateway
+  positionAlloc->Add (Vector (0.0, 0.0, 20000.0));
+  // Node 1 starts just out of range, moves into range after 2 packets have been sent
+  positionAlloc->Add (Vector (-40200.0, 0.0, 20000.0));
+  // Node 2 is also on the gateway
   positionAlloc->Add (Vector (0.0, 0.0, 20000.0));
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
@@ -358,9 +362,9 @@ int main (int argc, char *argv[])
                                   source, packetSize, numPackets, interPacketInterval);
 
   // update position twice per second
-  //Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
+  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 
-  Simulator::Stop(Seconds(10.0));
+  Simulator::Stop(Seconds(60.0));
   Simulator::Run ();
   Simulator::Destroy ();
 
