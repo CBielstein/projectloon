@@ -338,6 +338,7 @@ int main (int argc, char *argv[])
 
   // Create 2 receiving nodes
   createReceiver(balloons.Get (1));
+  Ptr<Socket> source2 = createSender(balloons.Get (1));
   createReceiver(balloons.Get (2));
     // Tracing
   wifiPhy.EnablePcap ("wifi-simple-adhoc", devices);
@@ -364,6 +365,11 @@ int main (int argc, char *argv[])
     NS_LOG_UNCOND ("Packet send failed.");
   }
   Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
+                                  Seconds (1.0), &GenerateTraffic, 
+                                  source, packetSize, numPackets, interPacketInterval);
+
+  // If you don't comment this out, Node 1 will receive messages from itself lol
+  Simulator::ScheduleWithContext (source2->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTraffic, 
                                   source, packetSize, numPackets, interPacketInterval);
 
