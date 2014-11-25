@@ -85,6 +85,7 @@ struct HeartBeat
 {
     Vector3D Position;
     uint32_t ETT;
+    uint32_t SenderId;
 };
 
 NetDeviceContainer ueDevs;
@@ -106,8 +107,11 @@ void ReceivePacket(Ptr<Socket> socket)
         {
             NS_LOG(ns3::LOG_DEBUG, "pkt_size != cpy_size: " << pkt_size << " != " << cpy_size);
         }
-
-        NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() << ": Coords" << msg.Position << ", ETT: " << msg.ETT);
+        if (msg.SenderId == socket->GetNode()->GetId()) {
+            NS_LOG(ns3::LOG_DEBUG, "Hearing from myself! " << socket->GetNode()->GetId());
+        } else {
+            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() << ": Coords" << msg.Position << ", ETT: " << msg.ETT << ", SenderId: " << msg.SenderId);
+        }
     }
 }
 
@@ -135,6 +139,7 @@ static void SendHeartBeat(Ptr<Socket> socket, Time hbInterval)
 
     hb.Position = socket->GetNode()->GetObject<MobilityModel>()->GetPosition();
     hb.ETT = 1337;
+    hb.SenderId = socket->GetNode()->GetId();
     // Send packet
     socket->Send(Create<Packet>((uint8_t*) &hb, sizeof(struct HeartBeat)));
 
@@ -247,6 +252,24 @@ static void SendPacketFromGateway(Ptr<LteUeNetDevice>& gateway, const Address& t
   }
 }
 
+// Creates a receiver!
+static void createReceiver(Ptr<Node> receiver) {
+  TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
+  Ptr<Socket> recvSink = Socket::CreateSocket (receiver, tid);
+  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
+  recvSink->Bind (local);
+  recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
+}
+
+static Ptr<Socket> createSender(Ptr<Node> sender) {
+  TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
+  Ptr<Socket> source = Socket::CreateSocket (sender, tid);
+  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
+  source->SetAllowBroadcast (true);
+  source->Connect (remote);
+  return source;
+}
+
 int main (int argc, char *argv[])
 {
   // Enable all logging for now, since this is a test
@@ -356,29 +379,23 @@ int main (int argc, char *argv[])
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
 
-  TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
-  Ptr<Socket> recvSink = Socket::CreateSocket (balloons.Get (0), tid);
-  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
-  recvSink->Bind (local);
-  recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
+  // Sender is node 0; node 1 and 2 are receivers
 
-  TypeId tid2 = TypeId::LookupByName ("ns3::UdpSocketFactory");
-  Ptr<Socket> recvSink2 = Socket::CreateSocket (balloons.Get (2), tid);
-  InetSocketAddress local2 = InetSocketAddress (Ipv4Address::GetAny (), 80);
-  recvSink2->Bind (local2);
-  recvSink2->SetRecvCallback (MakeCallback (&ReceivePacket));
+  // First node is the sender
+  Ptr<Socket> source = createSender(balloons.Get (0));
+  createReceiver(balloons.Get(0));
 
-  Ptr<Socket> source = Socket::CreateSocket (balloons.Get (1), tid);
-  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
-  source->SetAllowBroadcast (true);
-  source->Connect (remote);
+  // Create 2 receiving nodes
+  createReceiver(balloons.Get (1));
+  Ptr<Socket> source2 = createSender(balloons.Get (1));
+  createReceiver(balloons.Get (2));
+  Ptr<Socket> source3 = createSender(balloons.Get (2));
 
   // Tracing
   wifiPhy.EnablePcap ("wifi-simple-adhoc", devices);
 
   // Output what we are doing
   // NS_LOG_UNCOND ("Testing " << numPackets  << " packets sent with receiver rss " << rss  << " and interval " << interval);
-
 
   Ptr<LteUeNetDevice> gateway;
   gateway = ueDevs.Get (0)->GetObject<LteUeNetDevice> ();
@@ -397,6 +414,8 @@ int main (int argc, char *argv[])
   // turn off for now while working on heartbeat
   // Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
   Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source, Seconds(BALLOON_HEARTBEAT_INTERVAL));
+  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL + 0.01));
+  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source3, Seconds(BALLOON_HEARTBEAT_INTERVAL + 0.02));
 
   Simulator::Stop(Seconds(10.0));
   Simulator::Run ();
