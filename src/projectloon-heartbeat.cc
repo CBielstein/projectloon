@@ -279,6 +279,7 @@ int main (int argc, char *argv[])
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 1;
+  int numBalloons = 3;
   double interval = 1.0; // seconds
   bool verbose = false;
 
@@ -290,6 +291,7 @@ int main (int argc, char *argv[])
   cmd.AddValue ("numPackets", "number of packets generated", numPackets);
   cmd.AddValue ("interval", "interval (seconds) between packets", interval);
   cmd.AddValue ("verbose", "turn on all WifiNetDevice log components", verbose);
+  cmd.AddValue("numBalloons", "number of balloons", numBalloons);
 
   cmd.Parse (argc, argv);
   // Convert to time object
@@ -305,7 +307,7 @@ int main (int argc, char *argv[])
 
   // note: in the LTE model, balloons are eNBs
   NodeContainer balloons;
-  balloons.Create (3);
+  balloons.Create (numBalloons);
 
   // gateways will hold our internet access points on the ground
   // note: in the LTE model, gateways are UEs
@@ -379,17 +381,16 @@ int main (int argc, char *argv[])
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
 
-  // Sender is node 0; node 1 and 2 are receivers
-
-  // First node is the sender
+  // Create senders
   Ptr<Socket> source = createSender(balloons.Get (0));
-  createReceiver(balloons.Get(0));
-
-  // Create 2 receiving nodes
-  createReceiver(balloons.Get (1));
   Ptr<Socket> source2 = createSender(balloons.Get (1));
-  createReceiver(balloons.Get (2));
   Ptr<Socket> source3 = createSender(balloons.Get (2));
+
+  // Create Receivers
+  int x;
+  for (x = 0; x < numBalloons; x++) {
+    createReceiver(balloons.Get(x));
+  }
 
   // Tracing
   wifiPhy.EnablePcap ("wifi-simple-adhoc", devices);
@@ -413,9 +414,10 @@ int main (int argc, char *argv[])
   // update position twice per second
   // turn off for now while working on heartbeat
   // Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source, Seconds(BALLOON_HEARTBEAT_INTERVAL));
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL * 2));
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source3, Seconds(BALLOON_HEARTBEAT_INTERVAL * 3));
+
+  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source, Seconds(BALLOON_HEARTBEAT_INTERVAL * 1.5));
+  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL * 2.5));
+  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source3, Seconds(BALLOON_HEARTBEAT_INTERVAL * 3.5));
 
   Simulator::Stop(Seconds(10.0));
   Simulator::Run ();
