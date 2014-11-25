@@ -414,8 +414,8 @@ int main (int argc, char *argv[])
   // turn off for now while working on heartbeat
   // Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
   Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source, Seconds(BALLOON_HEARTBEAT_INTERVAL));
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL + 0.01));
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source3, Seconds(BALLOON_HEARTBEAT_INTERVAL + 0.02));
+  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL * 2));
+  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source3, Seconds(BALLOON_HEARTBEAT_INTERVAL * 3));
 
   Simulator::Stop(Seconds(10.0));
   Simulator::Run ();
