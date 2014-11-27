@@ -65,6 +65,8 @@
 #include <string>
 #include <math.h>
 
+#include "IPtoGPS.h"
+
 // LTE has 20km radius on ground, 20km in the air, which yields 28.284km signal range from the balloon
 // Special thanks to Hudson Bielstein for the computation
 #define LTE_SIGNAL_RADIUS 28284.0
@@ -88,6 +90,7 @@ struct HeartBeat
     uint32_t SenderId;
 };
 
+IPtoGPS map;
 NetDeviceContainer ueDevs;
 NetDeviceContainer enbDevs;
 Ptr<LteHelper> lteHelper;
@@ -185,6 +188,10 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
         Ptr<ConstantVelocityMobilityModel> balloon_mobility = balloons.Get(i)->GetObject<ConstantVelocityMobilityModel>();
         Vector3D balloon_position = balloon_mobility->GetPosition();
 
+        // update position
+        //Ipv4Address addr = Ipv4Address::ConvertFrom(balloons.Get(i)->GetDevice(1)->GetAddress());
+        //map.UpdateMapping(addr, balloon_position); 
+
         NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << " balloon " << balloons.Get(i)->GetId()
                         << ": Position: " << balloon_position 
                         << "   Speed:" << balloon_mobility->GetVelocity());
@@ -257,6 +264,7 @@ static void createReceiver(Ptr<Node> receiver) {
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   Ptr<Socket> recvSink = Socket::CreateSocket (receiver, tid);
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
+  map.AddMapping(local.GetIpv4(), receiver->GetObject<MobilityModel>()->GetPosition());
   recvSink->Bind (local);
   recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
 }
@@ -417,7 +425,7 @@ int main (int argc, char *argv[])
 
   // update position twice per second
   // turn off for now while working on heartbeat
-  // Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
+   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 
   Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source, Seconds(BALLOON_HEARTBEAT_INTERVAL * 1.5));
   Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL * 2.5));
