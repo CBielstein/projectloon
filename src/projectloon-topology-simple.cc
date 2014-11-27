@@ -61,6 +61,7 @@
 #include "ns3/wifi-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/lte-module.h"
+#include "ns3/lte-net-device.h"
 
 #include <iostream>
 #include <fstream>
@@ -198,20 +199,23 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
     Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 }
 
-static void SendPacketFromGateway(Ptr<LteUeNetDevice>& gateway, const Address& to)
+static void SendPacketFromGateway(Ptr<LteUeNetDevice>& gateway, Ptr<LteEnbNetDevice>& balloon, const Address& to)
 {
   Ptr<Packet> p = Create<Packet> (1);
 
   // The last parameter here is supposed to be protocolNumber, but I haven't figured out how to use that yet
-  bool succ = gateway->Send(p, to, 16);
+  bool succ = gateway->Send(p, to, 4);
   if(succ)
   {
-     NS_LOG_UNCOND("Packet send successful!");
+     NS_LOG_UNCOND("Packet send to " << to <<  " successful!");
   }
   else
   {
      NS_LOG_UNCOND("Packet send failed.");
   }
+  //NetDevice::ReceiveCallback cb = NetDevice::ReceiveCallback();
+  //balloon->LteNetDevice::SetReceiveCallback(cb);
+  balloon->Receive(p);
 }
 
 int main (int argc, char *argv[])
@@ -313,14 +317,17 @@ int main (int argc, char *argv[])
 
   // Install LTE protocol stack on gateways
   ueDevs = lteHelper->InstallUeDevice (gateways);
- 
+
   InternetStackHelper internet;
   internet.Install (balloons);
+  internet.Install (gateways);
 
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
+  Ipv4InterfaceContainer iENB = ipv4.Assign(enbDevs);
+  Ipv4InterfaceContainer iUE = ipv4.Assign(ueDevs);
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   Ptr<Socket> recvSink = Socket::CreateSocket (balloons.Get (0), tid);
@@ -339,19 +346,23 @@ int main (int argc, char *argv[])
   // Output what we are doing
   NS_LOG_UNCOND ("Testing " << numPackets  << " packets sent with receiver rss " << rss  << " and interval " << interval);
 
-
   Ptr<LteUeNetDevice> gateway;
   gateway = ueDevs.Get (0)->GetObject<LteUeNetDevice> ();
   
   Ptr<LteEnbNetDevice> balloon;
   balloon = enbDevs.Get (0)->GetObject<LteEnbNetDevice> ();
-  Mac48Address to = Mac48Address::ConvertFrom (balloon->GetAddress ());
+
+  Mac48Address to = Mac48Address::ConvertFrom(balloon->GetMulticast(iENB.GetAddress(0)));
+  lteHelper->EnableMacTraces();
+
+  NS_LOG_UNCOND ("Balloon: " << balloon->GetNode()->GetId() << " Address: " << to);
+
 
   Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTraffic, 
                                   source, packetSize, numPackets, interPacketInterval);
   
-  Simulator::Schedule (Seconds (5.0), &SendPacketFromGateway, gateway, to);
+  Simulator::ScheduleWithContext (balloon->GetNode()->GetId(),Seconds (5.0), &SendPacketFromGateway, gateway, balloon, to);
 
   // update position twice per second
   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
