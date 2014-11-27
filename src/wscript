@@ -8,5 +8,5 @@ def build(bld):
     obj.source = 'projectloon-elynn.cc'
 
     obj = bld.create_ns3_program('projectloon-heartbeat', ['projectloon', 'core', 'internet', 'mobility', 'wifi', 'config-store', 'stats', 'lte'])
-    obj.source = ['projectloon-heartbeat.cc', 'IPtoGPS.cpp']
+    obj.source = ['projectloon-heartbeat.cc', 'IPtoGPS.cpp', 'balloon.cc']
     obj.cxxflags = '-std=c++0x'

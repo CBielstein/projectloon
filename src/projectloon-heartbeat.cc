@@ -59,6 +59,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/lte-module.h"
 
+#include "balloon.h"
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -222,7 +223,7 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
         if (nearest_distance <= LTE_SIGNAL_RADIUS)
         {
             balloon_mobility->SetVelocity(Vector3D(0.0, 0.0, 0.0));
-            NS_LOG(ns3::LOG_DEBUG, "Moving with velocity (0.0, 0.0, 0.0)");
+            //NS_LOG(ns3::LOG_DEBUG, "Moving with velocity (0.0, 0.0, 0.0)");
         }
         else //otherwise, correct course
         {
@@ -235,7 +236,7 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
             // move in that direction at top speed
             balloon_mobility->SetVelocity(direction);
 
-            NS_LOG(ns3::LOG_DEBUG, "Moving with velocity " << direction);
+            //NS_LOG(ns3::LOG_DEBUG, "Moving with velocity " << direction);
         }
     }
     
@@ -316,6 +317,12 @@ int main (int argc, char *argv[])
   // note: in the LTE model, balloons are eNBs
   NodeContainer balloons;
   balloons.Create (numBalloons);
+  Balloon balloonArray[numBalloons];
+
+  int y;
+  for (y = 0; y < numBalloons; y++) {
+    balloonArray[y] = Balloon(balloons.Get(y), y);
+  }
 
   // gateways will hold our internet access points on the ground
   // note: in the LTE model, gateways are UEs
