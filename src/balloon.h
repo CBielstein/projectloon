@@ -1,24 +1,28 @@
+#ifndef BALLOON_H
+#define BALLOON_H
+
 #include "ns3/core-module.h"
-#include "ns3/network-module.h"
-#include "ns3/mobility-module.h"
-#include "ns3/config-store-module.h"
-#include "ns3/wifi-module.h"
-#include "ns3/internet-module.h"
-#include "ns3/lte-module.h"
+#include "ns3/node.h"
 
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <string>
-#include <math.h>
-
-using namespace ns3;
-
+// This class accompanies the nodes in a NodeContainer.
+// Sadly, it seemed nearly impossible to extend ns3::Node, so we did this to save time. 
 class Balloon {
   public:
+    // Default constructor
     Balloon();
-    Balloon(ns3::Ptr<ns3::Node>, int);
-    void setValues(ns3::Ptr<ns3::Node>, int);
-    ns3::Ptr<Node> getNode();
-    int getNum();
+    
+    // Constructor. Takes a node and an int
+    Balloon(ns3::Ptr<ns3::Node>);
+    
+    // Returns a pointer to the node. Non-const, so don't mess it up.
+    ns3::Ptr<ns3::Node> getNode();
+
+  private:
+    // the node that relates to this Balloon 
+    ns3::Ptr<ns3::Node> node;
+
+    // the lowest ETT from this balloon to a gateway
+    unsigned int ett;
 };
+
+#endif

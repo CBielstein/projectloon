@@ -51,6 +51,7 @@
 // tcpdump -r wifi-simple-adhoc-0-0.pcap -nn -tt
 //
 
+// ns3 includes
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/mobility-module.h"
@@ -59,30 +60,23 @@
 #include "ns3/internet-module.h"
 #include "ns3/lte-module.h"
 
-#include "balloon.h"
+// C/C++ includes
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string>
 #include <math.h>
 
+// Our includes
 #include "IPtoGPS.h"
-
-// LTE has 20km radius on ground, 20km in the air, which yields 28.284km signal range from the balloon
-// Special thanks to Hudson Bielstein for the computation
-#define LTE_SIGNAL_RADIUS 28284.0
-// ISM between balloons has 40km radius in air
-#define ISM_SIGNAL_RADIUS 40000.0
-// Balloon top speed is ~150 mph ~= 67 m/s
-#define BALLOON_TOP_SPEED 67.0
-// Length in seconds between updates of balloon position
-#define BALLOON_POSITION_UPDATE_RATE 0.5
-// heartbeat interval
-#define BALLOON_HEARTBEAT_INTERVAL 0.1
+#include "balloon.h"
+#include "defines.h"
 
 NS_LOG_COMPONENT_DEFINE ("LoonHeartbeat");
 
 using namespace ns3;
+
+// Define globals
 
 struct HeartBeat
 {
@@ -95,6 +89,9 @@ IPtoGPS map;
 NetDeviceContainer ueDevs;
 NetDeviceContainer enbDevs;
 Ptr<LteHelper> lteHelper;
+Balloon* balloons;
+
+// Define functions
 
 void ReceivePacket(Ptr<Socket> socket)
 {
@@ -281,9 +278,12 @@ static Ptr<Socket> createSender(Ptr<Node> sender) {
 
 int main (int argc, char *argv[])
 {
+  // ** Basic setup **
+
   // Enable all logging for now, since this is a test
   LogComponentEnable("LoonHeartbeat", ns3::LOG_DEBUG);
 
+  // Set basic variables
   std::string phyMode ("DsssRate1Mbps");
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
@@ -292,8 +292,8 @@ int main (int argc, char *argv[])
   double interval = 1.0; // seconds
   bool verbose = false;
 
+  // parse the command line
   CommandLine cmd;
-
   cmd.AddValue ("phyMode", "Wifi Phy mode", phyMode);
   cmd.AddValue ("rss", "received signal strength", rss);
   cmd.AddValue ("packetSize", "size of application packet sent", packetSize);
@@ -301,11 +301,10 @@ int main (int argc, char *argv[])
   cmd.AddValue ("interval", "interval (seconds) between packets", interval);
   cmd.AddValue ("verbose", "turn on all WifiNetDevice log components", verbose);
   cmd.AddValue("numBalloons", "number of balloons", numBalloons);
-
   cmd.Parse (argc, argv);
+
   // Convert to time object
   Time interPacketInterval = Seconds (interval);
-
   // disable fragmentation for frames below 2200 bytes
   Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue ("2200"));
   // turn off RTS/CTS for frames below 2200 bytes
@@ -314,15 +313,12 @@ int main (int argc, char *argv[])
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", 
                       StringValue (phyMode));
 
-  // note: in the LTE model, balloons are eNBs
-  NodeContainer balloons;
-  balloons.Create (numBalloons);
-  Balloon balloonArray[numBalloons];
 
-  int y;
-  for (y = 0; y < numBalloons; y++) {
-    balloonArray[y] = Balloon(balloons.Get(y), y);
-  }
+  // ** Start setting up the nodes for the simulation **
+
+  // note: in the LTE model, balloons are eNBs
+  NodeContainer balloonNodes;
+  balloonNodes.Create (numBalloons);
 
   // gateways will hold our internet access points on the ground
   // note: in the LTE model, gateways are UEs
@@ -359,7 +355,7 @@ int main (int argc, char *argv[])
                                 "ControlMode",StringValue (phyMode));
   // Set it to adhoc mode
   wifiMac.SetType ("ns3::AdhocWifiMac");
-  NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, balloons);
+  NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, balloonNodes);
 
   // Note that with FixedRssLossModel, the positions below are not 
   // used for received signal strength. 
@@ -373,7 +369,7 @@ int main (int argc, char *argv[])
   positionAlloc->Add (Vector (0.0, 0.0, 20000.0));
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
-  mobility.Install (balloons);
+  mobility.Install (balloonNodes);
 
   // Set position of ground links
   MobilityHelper gateway_mob;
@@ -385,63 +381,78 @@ int main (int argc, char *argv[])
 
   // LTEHelper is needed for performing certain LTE operations
   lteHelper = CreateObject<LteHelper> ();
-
   // Install LTE protocol stack on the balloons
-  enbDevs = lteHelper->InstallEnbDevice (balloons);
-
+  enbDevs = lteHelper->InstallEnbDevice (balloonNodes);
   // Install LTE protocol stack on gateways
   ueDevs = lteHelper->InstallUeDevice (gateways);
  
   InternetStackHelper internet;
-  internet.Install (balloons);
-
+  internet.Install (balloonNodes);
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
 
-  // Create senders
-  Ptr<Socket> source = createSender(balloons.Get (0));
-  Ptr<Socket> source2 = createSender(balloons.Get (1));
-  Ptr<Socket> source3 = createSender(balloons.Get (2));
-
-  // Create Receivers
-  int x;
-  for (x = 0; x < numBalloons; x++) {
-    createReceiver(balloons.Get(x));
-  }
-
   // Tracing
   wifiPhy.EnablePcap ("wifi-simple-adhoc", devices);
 
-  // Output what we are doing
-  // NS_LOG_UNCOND ("Testing " << numPackets  << " packets sent with receiver rss " << rss  << " and interval " << interval);
-
+  // Do LTE stuff
   Ptr<LteUeNetDevice> gateway;
   gateway = ueDevs.Get (0)->GetObject<LteUeNetDevice> ();
-  
   Ptr<LteEnbNetDevice> balloon;
   balloon = enbDevs.Get (0)->GetObject<LteEnbNetDevice> ();
   Mac48Address to = Mac48Address::ConvertFrom (balloon->GetAddress ());
+
+  // Create senders
+  Ptr<Socket> source = createSender(balloonNodes.Get (0));
+  Ptr<Socket> source2 = createSender(balloonNodes.Get (1));
+  Ptr<Socket> source3 = createSender(balloonNodes.Get (2));
+
+  // Create Receivers
+  for (int x = 0; x < numBalloons; x++)
+  {
+    createReceiver(balloonNodes.Get(x));
+  }
+
+  // create the array of Balloons
+  balloons = (Balloon*)calloc(numBalloons, sizeof(Balloon));
+  for (int y = 0; y < numBalloons; y++)
+  {
+    balloons[y] = Balloon(balloonNodes.Get(y));
+  }
+
+
+  // ** Schedule events **
 
   //Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
   //                                Seconds (1.0), &GenerateTraffic, 
   //                                source, packetSize, numPackets, interPacketInterval);
   
+  // Send from the gateway to the balloons
   Simulator::Schedule (Seconds (100.0), &SendPacketFromGateway, gateway, to);
 
-  // update position twice per second
-  // turn off for now while working on heartbeat
-   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
+  // update position and do movement
+  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloonNodes, gateways);
 
+  // activate heartbeats
+  // TODO ensure this scales
+  // TODO randomize jittering to avoid collisions
   Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source, Seconds(BALLOON_HEARTBEAT_INTERVAL * 1.5));
   Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL * 2.5));
   Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source3, Seconds(BALLOON_HEARTBEAT_INTERVAL * 3.5));
+
+
+  // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
   Simulator::Run ();
   Simulator::Destroy ();
 
+
+  // ** Clean up **
+  free(balloons);
+
+  // yay we're done
   return 0;
 }
 
