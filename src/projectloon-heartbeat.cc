@@ -48,9 +48,10 @@ using namespace ns3;
 
 struct HeartBeat
 {
-    Vector3D Position;
-    uint32_t ETT;
     uint32_t SenderId;
+    uint32_t ETT;
+    Vector3D Position;
+    Ipv4Address sender_ip;
 };
 
 IPtoGPS map;
@@ -58,6 +59,7 @@ NetDeviceContainer ueDevs;
 NetDeviceContainer enbDevs;
 Ptr<LteHelper> lteHelper;
 Balloon* balloons;
+unsigned int numBalloons; 
 
 // ** Define helper functions **
 
@@ -79,6 +81,21 @@ double Jitter(double input)
     return input + (input * percentage);
 }
 
+// Function to handle receiving a heartbeat message
+static void ReceiveHeartBeat(const struct HeartBeat& hb, Balloon& balloon)
+{
+    // Create neighbor struct
+    struct Neighbor nb;
+    nb.gateway_ett = hb.ETT;
+    nb.position = hb.Position;
+    nb.ip_addr = hb.sender_ip; 
+
+    if (!balloon.SetNeighbor(hb.SenderId, nb))
+    {
+        NS_LOG(ns3::LOG_WARN, "Balloon " << balloon.GetId() << " failed to SetNieghbor!");
+    }
+}
+
 // Generic recieve function for testing
 void ReceivePacket(Ptr<Socket> socket)
 {
@@ -86,6 +103,25 @@ void ReceivePacket(Ptr<Socket> socket)
     uint32_t pkt_size = 0;
     uint32_t cpy_size = 0;
     struct HeartBeat msg;
+
+    // find the matching balloon object to the socket
+    uint32_t node_id = socket->GetNode()->GetId();
+    Balloon* balloon = NULL;
+    for (unsigned int i = 0; i < numBalloons; ++i)
+    {
+        if (node_id == balloons[i].GetId())
+        {
+            balloon = &balloons[i];
+            break;
+        }
+    } 
+
+    // we can't do much without the balloon object
+    if (balloon == NULL)
+    {
+        NS_LOG(ns3::LOG_WARN, "No balloon object found for id " << node_id);
+        return;
+    }
     
     while (pkt = socket->Recv())
     {
@@ -95,10 +131,17 @@ void ReceivePacket(Ptr<Socket> socket)
         {
             NS_LOG(ns3::LOG_DEBUG, "pkt_size != cpy_size: " << pkt_size << " != " << cpy_size);
         }
-        if (msg.SenderId == socket->GetNode()->GetId()) {
+
+        if (msg.SenderId == socket->GetNode()->GetId())
+        {
             NS_LOG(ns3::LOG_DEBUG, "Hearing from myself! " << socket->GetNode()->GetId());
-        } else {
-            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() << ": Coords" << msg.Position << ", ETT: " << msg.ETT << ", SenderId: " << msg.SenderId);
+        }
+        else
+        {
+            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() 
+                   << ": Coords" << msg.Position << ", ETT: " << msg.ETT << ", SenderId: " << msg.SenderId);
+            
+            ReceiveHeartBeat(msg, *balloon);
         }
     }
 }
@@ -111,6 +154,7 @@ static void SendHeartBeat(Ptr<Socket> socket, Balloon& balloon, Time hbInterval)
     hb.Position = balloon.GetPosition();
     hb.ETT = balloon.GetEtt();
     hb.SenderId = balloon.GetId();
+    hb.sender_ip = balloon.GetIpv4Addr();
 
     // Send packet
     socket->Send(Create<Packet>((uint8_t*) &hb, sizeof(struct HeartBeat)));
@@ -245,7 +289,7 @@ int main (int argc, char *argv[])
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 1;
-  int numBalloons = 3;
+  numBalloons = 3;
   int numGateways = 1;
   double interval = 1.0; // seconds
   bool verbose = false;
@@ -319,7 +363,7 @@ int main (int argc, char *argv[])
   // Set mobility model and initial positions
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
-  for (int i = 0; i < numBalloons; ++i)
+  for (unsigned int i = 0; i < numBalloons; ++i)
   {
     // TODO create randomized (or fixed for tests?) balloon positions
   }
@@ -372,7 +416,7 @@ int main (int argc, char *argv[])
   // Create Receivers and senders
   std::vector<Ptr<Socket>> sources;
   balloons = (Balloon*)calloc(numBalloons, sizeof(Balloon));
-  for (int i = 0; i < numBalloons; ++i)
+  for (unsigned int i = 0; i < numBalloons; ++i)
   {
     // Create sender sockets 
     sources.push_back(createSender(balloonNodes.Get(i)));
@@ -390,7 +434,7 @@ int main (int argc, char *argv[])
 
   // activate heartbeats
   // TODO randomize jittering to avoid collisions
-  for (int i = 0; i < numBalloons; ++i)
+  for (unsigned int i = 0; i < numBalloons; ++i)
   {
     // Schedule the event, with the jitter
     Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, sources[i], balloons[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
