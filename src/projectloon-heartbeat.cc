@@ -91,8 +91,9 @@ NetDeviceContainer enbDevs;
 Ptr<LteHelper> lteHelper;
 Balloon* balloons;
 
-// Define functions
+// ** Define helper functions **
 
+// Generic recieve function for testing
 void ReceivePacket(Ptr<Socket> socket)
 {
     Ptr<Packet> pkt = NULL;
@@ -116,21 +117,7 @@ void ReceivePacket(Ptr<Socket> socket)
     }
 }
 
-static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize, 
-                             uint32_t pktCount, Time pktInterval )
-{
-  if (pktCount > 0)
-    {
-      socket->Send (Create<Packet> (pktSize));
-      Simulator::Schedule (pktInterval, &GenerateTraffic, 
-                           socket, pktSize,pktCount-1, pktInterval);
-    }
-  else
-    {
-      socket->Close ();
-    }
-}
-
+// Send a regular heartbeat message
 static void SendHeartBeat(Ptr<Socket> socket, Time hbInterval)
 {
     // Get info
@@ -241,22 +228,6 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
     Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 }
 
-static void SendPacketFromGateway(Ptr<LteUeNetDevice>& gateway, const Address& to)
-{
-  Ptr<Packet> p = Create<Packet> (1);
-
-  // The last parameter here is supposed to be protocolNumber, but I haven't figured out how to use that yet
-  bool succ = gateway->Send(p, to, 16);
-  if(succ)
-  {
-     NS_LOG_UNCOND("Packet send successful!");
-  }
-  else
-  {
-     NS_LOG_UNCOND("Packet send failed.");
-  }
-}
-
 // Creates a receiver!
 static void createReceiver(Ptr<Node> receiver) {
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
@@ -289,6 +260,7 @@ int main (int argc, char *argv[])
   uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 1;
   int numBalloons = 3;
+  int numGateways = 1;
   double interval = 1.0; // seconds
   bool verbose = false;
 
@@ -301,6 +273,7 @@ int main (int argc, char *argv[])
   cmd.AddValue ("interval", "interval (seconds) between packets", interval);
   cmd.AddValue ("verbose", "turn on all WifiNetDevice log components", verbose);
   cmd.AddValue("numBalloons", "number of balloons", numBalloons);
+  cmd.AddValue("numGateways", "number of gateways", numGateways);
   cmd.Parse (argc, argv);
 
   // Convert to time object
@@ -323,7 +296,7 @@ int main (int argc, char *argv[])
   // gateways will hold our internet access points on the ground
   // note: in the LTE model, gateways are UEs
   NodeContainer gateways;
-  gateways.Create(1);
+  gateways.Create(numGateways);
 
   // The below set of helpers will help us to put together the wifi NICs we want
   WifiHelper wifi;
@@ -357,16 +330,22 @@ int main (int argc, char *argv[])
   wifiMac.SetType ("ns3::AdhocWifiMac");
   NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, balloonNodes);
 
-  // Note that with FixedRssLossModel, the positions below are not 
-  // used for received signal strength. 
+  // Set mobility model and initial positions
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
+  for (int i = 0; i < numBalloons; ++i)
+  {
+    // TODO create randomized (or fixed for tests?) balloon positions
+  }
+
+  // for now, just set them fixed while we test so we know what they're doing
   // Node 0 (sender) starts ON the gateway
   positionAlloc->Add (Vector (0.0, 0.0, 20000.0));
   // Node 1 starts just out of range, moves into range after 2 packets have been sent
   positionAlloc->Add (Vector (-40200.0, 0.0, 20000.0));
   // Node 2 is also on the gateway
   positionAlloc->Add (Vector (0.0, 0.0, 20000.0));
+
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
   mobility.Install (balloonNodes);
@@ -374,7 +353,14 @@ int main (int argc, char *argv[])
   // Set position of ground links
   MobilityHelper gateway_mob;
   Ptr<ListPositionAllocator> gateway_position_alloc = CreateObject<ListPositionAllocator>();
+  for (int i = 0; i < numGateways; ++i)
+  {
+    // TODO create randomized (or fixed for tests?) gateway positions
+  }
+
+  // for now, just set them fixed while we test so we know what they're doing
   gateway_position_alloc->Add(Vector(0.0, 0.0, 0.0)); // right on the origin
+
   gateway_mob.SetPositionAllocator(gateway_position_alloc);
   gateway_mob.SetMobilityModel("ns3::ConstantPositionMobilityModel");
   gateway_mob.Install(gateways);
@@ -396,51 +382,32 @@ int main (int argc, char *argv[])
   // Tracing
   wifiPhy.EnablePcap ("wifi-simple-adhoc", devices);
 
-  // Do LTE stuff
-  Ptr<LteUeNetDevice> gateway;
-  gateway = ueDevs.Get (0)->GetObject<LteUeNetDevice> ();
-  Ptr<LteEnbNetDevice> balloon;
-  balloon = enbDevs.Get (0)->GetObject<LteEnbNetDevice> ();
-  Mac48Address to = Mac48Address::ConvertFrom (balloon->GetAddress ());
-
-  // Create senders
-  Ptr<Socket> source = createSender(balloonNodes.Get (0));
-  Ptr<Socket> source2 = createSender(balloonNodes.Get (1));
-  Ptr<Socket> source3 = createSender(balloonNodes.Get (2));
-
-  // Create Receivers
-  for (int x = 0; x < numBalloons; x++)
-  {
-    createReceiver(balloonNodes.Get(x));
-  }
-
   // create the array of Balloons
+  // Create Receivers and senders
+  std::vector<Ptr<Socket>> sources;
   balloons = (Balloon*)calloc(numBalloons, sizeof(Balloon));
-  for (int y = 0; y < numBalloons; y++)
+  for (int i = 0; i < numBalloons; ++i)
   {
-    balloons[y] = Balloon(balloonNodes.Get(y));
+    // Create sender sockets 
+    sources.push_back(createSender(balloonNodes.Get(i)));
+    // Create reciever sockets
+    createReceiver(balloonNodes.Get(i));
+    // Add node to the balloons array
+    balloons[i] = Balloon(balloonNodes.Get(i));
   }
 
 
   // ** Schedule events **
 
-  //Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
-  //                                Seconds (1.0), &GenerateTraffic, 
-  //                                source, packetSize, numPackets, interPacketInterval);
-  
-  // Send from the gateway to the balloons
-  Simulator::Schedule (Seconds (100.0), &SendPacketFromGateway, gateway, to);
-
   // update position and do movement
   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloonNodes, gateways);
 
   // activate heartbeats
-  // TODO ensure this scales
   // TODO randomize jittering to avoid collisions
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source, Seconds(BALLOON_HEARTBEAT_INTERVAL * 1.5));
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source2, Seconds(BALLOON_HEARTBEAT_INTERVAL * 2.5));
-  Simulator::Schedule(Seconds(1.0), &SendHeartBeat, source3, Seconds(BALLOON_HEARTBEAT_INTERVAL * 3.5));
-
+  for (int i = 0; i < numBalloons; ++i)
+  {
+    Simulator::Schedule(Seconds(1.0), &SendHeartBeat, sources[i], Seconds(BALLOON_HEARTBEAT_INTERVAL * (i + 0.5)));
+  }
 
   // ** Begin the simulation **
 
