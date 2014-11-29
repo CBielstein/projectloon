@@ -17,40 +17,6 @@
  *
  */
 
-// 
-// This script configures two nodes on an 802.11b physical layer, with
-// 802.11b NICs in adhoc mode, and by default, sends one packet of 1000 
-// (application) bytes to the other node.  The physical layer is configured
-// to receive at a fixed RSS (regardless of the distance and transmit
-// power); therefore, changing position of the nodes has no effect. 
-//
-// There are a number of command-line options available to control
-// the default behavior.  The list of available command-line options
-// can be listed with the following command:
-// ./waf --run "wifi-simple-adhoc --help"
-//
-// For instance, for this configuration, the physical layer will
-// stop successfully receiving packets when rss drops below -97 dBm.
-// To see this effect, try running:
-//
-// ./waf --run "wifi-simple-adhoc --rss=-97 --numPackets=20"
-// ./waf --run "wifi-simple-adhoc --rss=-98 --numPackets=20"
-// ./waf --run "wifi-simple-adhoc --rss=-99 --numPackets=20"
-//
-// Note that all ns-3 attributes (not just the ones exposed in the below
-// script) can be changed at command line; see the documentation.
-//
-// This script can also be helpful to put the Wifi layer into verbose
-// logging mode; this command will turn on all wifi logging:
-// 
-// ./waf --run "wifi-simple-adhoc --verbose=1"
-//
-// When you are done, you will notice two pcap trace files in your directory.
-// If you have tcpdump installed, you can try this:
-//
-// tcpdump -r wifi-simple-adhoc-0-0.pcap -nn -tt
-//
-
 // ns3 includes
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
@@ -66,6 +32,8 @@
 #include <vector>
 #include <string>
 #include <math.h>
+#include <stdlib.h>
+#include <time.h>
 
 // Our includes
 #include "IPtoGPS.h"
@@ -93,6 +61,24 @@ Balloon* balloons;
 
 // ** Define helper functions **
 
+// produces random jitter of [-25,25]% of the input
+// seeds rand on the first call to this function
+double Jitter(double input)
+{
+    static bool did_seed_rand = false;
+    if (!did_seed_rand)
+    {
+        srand(time(NULL));
+        did_seed_rand = true;
+    }
+
+    // create a random number [0,50], then [-25,25], then [-.25,.25]
+    double percentage = ((rand() % 51) - 25) / 100.0;
+
+    // return the the input with the jttered percentage difference
+    return input + (input * percentage);
+}
+
 // Generic recieve function for testing
 void ReceivePacket(Ptr<Socket> socket)
 {
@@ -118,24 +104,22 @@ void ReceivePacket(Ptr<Socket> socket)
 }
 
 // Send a regular heartbeat message
-static void SendHeartBeat(Ptr<Socket> socket, Time hbInterval)
+static void SendHeartBeat(Ptr<Socket> socket, Balloon& balloon, Time hbInterval)
 {
-    // Get info
-    Ptr<Node> balloon = socket->GetNode();
-
+    // Set struct values
     struct HeartBeat hb;
+    hb.Position = balloon.GetPosition();
+    hb.ETT = balloon.GetEtt();
+    hb.SenderId = balloon.GetId();
 
-    hb.Position = socket->GetNode()->GetObject<MobilityModel>()->GetPosition();
-    hb.ETT = 1337;
-    hb.SenderId = socket->GetNode()->GetId();
     // Send packet
     socket->Send(Create<Packet>((uint8_t*) &hb, sizeof(struct HeartBeat)));
 
     // Schedule to do it again
-    Simulator::Schedule(hbInterval, &SendHeartBeat, socket, hbInterval);
+    Simulator::Schedule(Seconds(Jitter(hbInterval.GetSeconds())), &SendHeartBeat, socket, balloon, hbInterval);
 }
 
-// I don't know why I have to do this...
+// I don't know why I have to do this...it should be done by them
 static Vector3D Normalize(const Vector3D& v, double scale)
 {
     Vector3D ret_val(v);
@@ -406,7 +390,8 @@ int main (int argc, char *argv[])
   // TODO randomize jittering to avoid collisions
   for (int i = 0; i < numBalloons; ++i)
   {
-    Simulator::Schedule(Seconds(1.0), &SendHeartBeat, sources[i], Seconds(BALLOON_HEARTBEAT_INTERVAL * (i + 0.5)));
+    // Schedule the event, with the jitter
+    Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, sources[i], balloons[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
   }
 
   // ** Begin the simulation **
