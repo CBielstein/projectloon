@@ -141,27 +141,29 @@ static Vector3D Normalize(const Vector3D& v, double scale)
 }
 
 // Takes the nodecontainers for the balloons and the gateways (on the ground) and finds the correct movement for each balloon
-static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer& gateways)
+static void UpdateBalloonPositions(Balloon* balloons, size_t numBalloons, const NodeContainer& gateways)
 {
     // ensure we aren't passed empty containers
-    if (balloons.GetN() < 1 || gateways.GetN() < 1)
+    if (balloons == NULL || numBalloons  < 1 || gateways.GetN() < 1)
     {
-        NS_LOG(ns3::LOG_ERROR, "Entered UpdateBalloonPositions with balloons size: " << balloons.GetN()
-                << " and gateways size: " << gateways.GetN());
+        NS_LOG(ns3::LOG_ERROR, "Entered UpdateBalloonPositions with balloons: " << balloons
+                << " and length: " << numBalloons << " and gateways size: " << gateways.GetN());
         return;
     }
 
     // for each balloon, find closest gateway and move toward it at speed
-    for (unsigned int i = 0; i < balloons.GetN(); ++i)
+    for (unsigned int i = 0; i < numBalloons; ++i)
     {
-        Ptr<ConstantVelocityMobilityModel> balloon_mobility = balloons.Get(i)->GetObject<ConstantVelocityMobilityModel>();
+        Ptr<ConstantVelocityMobilityModel> balloon_mobility = balloons[i].GetNode()->GetObject<ConstantVelocityMobilityModel>();
         Vector3D balloon_position = balloon_mobility->GetPosition();
 
         // update position
-        //Ipv4Address addr = Ipv4Address::ConvertFrom(balloons.Get(i)->GetDevice(1)->GetAddress());
-        //map.UpdateMapping(addr, balloon_position); 
+        if(!map.UpdateMapping(balloons[i].GetIpv4Addr(), balloon_position))
+        {
+            NS_LOG(ns3::LOG_WARN, "Failed to update position for IP address " << balloons[i].GetIpv4Addr());
+        }
 
-        NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << " balloon " << balloons.Get(i)->GetId()
+        NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << " balloon " << balloons[i].GetId()
                         << ": Position: " << balloon_position 
                         << "   Speed:" << balloon_mobility->GetVelocity());
 
@@ -209,7 +211,7 @@ static void UpdateBalloonPositions(NodeContainer& balloons, const NodeContainer&
     }
     
     // schedule this to happen again in BALLOON_POSITION_UPDATE_RATE seconds
-    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
+    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, numBalloons, gateways);
 }
 
 // Creates a receiver!
@@ -384,7 +386,7 @@ int main (int argc, char *argv[])
   // ** Schedule events **
 
   // update position and do movement
-  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloonNodes, gateways);
+  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, numBalloons, gateways);
 
   // activate heartbeats
   // TODO randomize jittering to avoid collisions

@@ -4,6 +4,7 @@
 #include "ns3/core-module.h"
 #include "ns3/node.h"
 #include "ns3/mobility-model.h"
+#include "ns3/ipv4.h"
 
 // This class accompanies the nodes in a NodeContainer.
 // Sadly, it seemed nearly impossible to extend ns3::Node, so we did this to save time. 
@@ -26,6 +27,9 @@ class Balloon {
 
     // Returns the lowest ETT to a gateway
     unsigned int GetEtt() const;
+
+    // Returns the address of the Ipv4 interface
+    ns3::Ipv4Address GetIpv4Addr() const;
 
   private:
     // the node that relates to this Balloon 
