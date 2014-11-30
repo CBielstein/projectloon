@@ -133,6 +133,30 @@ void ReceivePacket(Ptr<Socket> socket)
     }
 }
 
+void ReceiveGeneralPacket(Ptr<Socket> socket)
+{
+    while (socket->Recv())
+    {
+      NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
+    }
+}
+
+static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
+                             uint32_t pktCount, Time pktInterval )
+{
+  if (pktCount > 0)
+    {
+      socket->Send (Create<Packet> (pktSize));
+      Simulator::Schedule (pktInterval, &GenerateTraffic,
+                           socket, pktSize,pktCount-1, pktInterval);
+      NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left");
+    }
+  else
+    {
+      socket->Close ();
+    }
+}
+
 // Send a regular heartbeat message
 static void SendHeartBeat(Ptr<Socket> socket, Balloon& balloon, Time hbInterval)
 {
@@ -244,19 +268,23 @@ static void UpdateBalloonPositions(Balloon* balloons, size_t numBalloons, const 
 }
 
 // Creates a receiver!
-static void createReceiver(Ptr<Node> receiver) {
+static void createReceiver(Ptr<Node> receiver, uint16_t port) {
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   Ptr<Socket> recvSink = Socket::CreateSocket (receiver, tid);
-  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
+  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), port);
   map.AddMapping(local.GetIpv4(), receiver->GetObject<MobilityModel>()->GetPosition());
   recvSink->Bind (local);
-  recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
+  if (port == 80) {
+    recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
+  } else {
+    recvSink->SetRecvCallback(MakeCallback(&ReceiveGeneralPacket));
+  }
 }
 
-static Ptr<Socket> createSender(Ptr<Node> sender) {
+static Ptr<Socket> createSender(Ptr<Node> sender, uint16_t port) {
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   Ptr<Socket> source = Socket::CreateSocket (sender, tid);
-  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
+  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), port);
   source->SetAllowBroadcast (true);
   source->Connect (remote);
   return source;
@@ -273,11 +301,13 @@ int main (int argc, char *argv[])
   std::string phyMode ("DsssRate1Mbps");
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
-  uint32_t numPackets = 1;
+  uint32_t numPackets = 30;
   numBalloons = 3;
   int numGateways = 1;
   double interval = 1.0; // seconds
   bool verbose = false;
+  uint16_t heartbeatPort = 80;
+  uint16_t otherPort = 88;
 
   // parse the command line
   CommandLine cmd;
@@ -399,14 +429,19 @@ int main (int argc, char *argv[])
 
   // create the array of Balloons
   // Create Receivers and senders
+  std::vector<Ptr<Socket>> heartbeatSources;
   std::vector<Ptr<Socket>> sources;
   balloons = (Balloon*)calloc(numBalloons, sizeof(Balloon));
   for (unsigned int i = 0; i < numBalloons; ++i)
   {
-    // Create sender sockets 
-    sources.push_back(createSender(balloonNodes.Get(i)));
-    // Create reciever sockets
-    createReceiver(balloonNodes.Get(i));
+    // Create sender sockets for heartbeat messages
+    heartbeatSources.push_back(createSender(balloonNodes.Get(i), heartbeatPort));
+    // Create sender sockets for other messages
+    sources.push_back(createSender(balloonNodes.Get(i), otherPort));
+    // Create reciever sockets for heartbeat messages
+    createReceiver(balloonNodes.Get(i), heartbeatPort);
+    // Create reciever sockets for other messages
+    createReceiver(balloonNodes.Get(i), otherPort);
     // Add node to the balloons array
     balloons[i] = Balloon(balloonNodes.Get(i));
   }
@@ -421,9 +456,12 @@ int main (int argc, char *argv[])
   for (unsigned int i = 0; i < numBalloons; ++i)
   {
     // Schedule the event, with the jitter
-    Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, sources[i], balloons[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
+    Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, heartbeatSources[i], balloons[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
   }
 
+  Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
+                                  Seconds (1.0), &GenerateTraffic, 
+                                  sources[0], packetSize, numPackets, interPacketInterval);
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
