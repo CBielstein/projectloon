@@ -62,6 +62,10 @@
 #include "ns3/internet-module.h"
 #include "ns3/lte-module.h"
 #include "ns3/lte-net-device.h"
+#include "ns3/antenna-model.h"
+#include "ns3/isotropic-antenna-model.h"
+#include "ns3/lte-spectrum-signal-parameters.h"
+#include "ns3/ptr.h"
 
 #include <iostream>
 #include <fstream>
@@ -86,6 +90,18 @@ using namespace ns3;
 NetDeviceContainer ueDevs;
 NetDeviceContainer enbDevs;
 Ptr<LteHelper> lteHelper;
+std::vector<double> MakeUlFreqVector()
+{
+  std::vector<double> v = std::vector<double>();  
+  for(double i = 1920; i < 1980.5; i+=.5)
+  {
+    v.push_back(i);
+  }  
+  return v;
+}
+
+static std::vector<double> ulFreqs = MakeUlFreqVector();
+static Ptr<SpectrumModel>  ulSm = Create<SpectrumModel>(ulFreqs);
 
 void ReceivePacket (Ptr<Socket> socket)
 {
@@ -203,19 +219,37 @@ static void SendPacketFromGateway(Ptr<LteUeNetDevice>& gateway, Ptr<LteEnbNetDev
 {
   Ptr<Packet> p = Create<Packet> (1);
 
-  // The last parameter here is supposed to be protocolNumber, but I haven't figured out how to use that yet
-  bool succ = gateway->Send(p, to, 4);
-  if(succ)
+  Ipv4Header* ipHeader= new Ipv4Header();
+  p->AddHeader(*ipHeader);
+  Ptr<PacketBurst> pb = Create<PacketBurst>();
+  pb->AddPacket(p);
+  std::list<Ptr<LteControlMessage> >  ctrlMsgList = std::list<Ptr<LteControlMessage> >(); 
+
+  Ptr<LteSpectrumPhy> gatewaySpectPhy = gateway->GetPhy()->GetUlSpectrumPhy();
+  Ptr<LteSpectrumPhy> balloonSpectPhy = balloon->GetPhy()->GetDlSpectrumPhy();  
+  
+  Ptr<SpectrumValue> ulTxPsd = Create<SpectrumValue>(ulSm); 
+  gatewaySpectPhy->SetTxPowerSpectralDensity(ulTxPsd);  
+  Ptr<IsotropicAntennaModel> am = Create<IsotropicAntennaModel>();
+  gatewaySpectPhy->SetAntenna(am);
+
+  Time duration = NanoSeconds(78714 -1);
+  
+  // The bool being returned here is true if an error occurs...
+  if(!gatewaySpectPhy->StartTxDataFrame(pb, ctrlMsgList, duration))
   {
-     NS_LOG_UNCOND("Packet send to " << to <<  " successful!");
+    NS_LOG(ns3::LOG_DEBUG, "Gateway send successful");
   }
-  else
-  {
-     NS_LOG_UNCOND("Packet send failed.");
-  }
-  //NetDevice::ReceiveCallback cb = NetDevice::ReceiveCallback();
-  //balloon->LteNetDevice::SetReceiveCallback(cb);
-  balloon->Receive(p);
+
+/*  SpectrumSignalParameters params = SpectrumSignalParameters();
+  params.duration = duration;
+  params.psd = ulTxPsd;
+  params.txAntenna = gatewaySpectPhy->GetRxAntenna();
+  params.txPhy = gatewaySpectPhy;
+*/
+
+  SpectrumSignalParameters params = LteSpectrumSignalParameters();
+  //balloonSpectPhy->StartRx(&params);
 }
 
 int main (int argc, char *argv[])
@@ -318,6 +352,7 @@ int main (int argc, char *argv[])
   // Install LTE protocol stack on gateways
   ueDevs = lteHelper->InstallUeDevice (gateways);
 
+ 
   InternetStackHelper internet;
   internet.Install (balloons);
   internet.Install (gateways);
@@ -333,12 +368,17 @@ int main (int argc, char *argv[])
   Ptr<Socket> recvSink = Socket::CreateSocket (balloons.Get (0), tid);
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
   recvSink->Bind (local);
-  recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
+  recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));  
 
   Ptr<Socket> source = Socket::CreateSocket (balloons.Get (1), tid);
   InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
   source->SetAllowBroadcast (true);
   source->Connect (remote);
+
+  Ptr<Socket> gatewaySrc = Socket::CreateSocket (gateways.Get(0), tid);
+  gatewaySrc->SetAllowBroadcast (true);
+  NS_LOG_UNCOND("Created socket for " << gatewaySrc->GetNode()->GetId());
+
 
   // Tracing
   wifiPhy.EnablePcap ("wifi-simple-adhoc", devices);
@@ -355,8 +395,8 @@ int main (int argc, char *argv[])
   Mac48Address to = Mac48Address::ConvertFrom(balloon->GetMulticast(iENB.GetAddress(0)));
   lteHelper->EnableMacTraces();
 
+  
   NS_LOG_UNCOND ("Balloon: " << balloon->GetNode()->GetId() << " Address: " << to);
-
 
   Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTraffic, 
@@ -364,6 +404,10 @@ int main (int argc, char *argv[])
   
   Simulator::ScheduleWithContext (balloon->GetNode()->GetId(),Seconds (5.0), &SendPacketFromGateway, gateway, balloon, to);
 
+  /*Simulator::ScheduleWithContext (gatewaySrc->GetNode()->GetId(), 
+				  Seconds (5.0), &GenerateTraffic, 
+				  gatewaySrc, packetSize, numPackets, interPacketInterval); 
+*/
   // update position twice per second
   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, gateways);
 
