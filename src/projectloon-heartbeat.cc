@@ -139,9 +139,11 @@ static void SendHeartBeat(Ptr<Socket> socket, Balloon& balloon, Time hbInterval)
     // Get the HeartBeat
     struct HeartBeat hb = balloon.CreateHeartBeat();
 
-    // Send packet
-    socket->Send(Create<Packet>((uint8_t*) &hb, sizeof(struct HeartBeat)));
+    // Create Packet separately, in case we need to add anything to it...
+    Ptr<Packet> packet = Create<Packet>((uint8_t*) &hb, sizeof(struct HeartBeat));
 
+    // Send packet
+    socket->Send(packet);
     // Schedule to do it again
     Simulator::Schedule(Seconds(Jitter(hbInterval.GetSeconds())), &SendHeartBeat, socket, balloon, hbInterval);
 }
