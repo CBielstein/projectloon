@@ -79,12 +79,12 @@ static void ReceiveHeartBeat(const struct HeartBeat& hb, Balloon& balloon)
 {
     if (!balloon.AddHeartBeat(hb.SenderId, hb))
     {
-        NS_LOG(ns3::LOG_WARN, "Balloon " << balloon.GetId() << " failed to SetNieghbor!");
+        NS_LOG(ns3::LOG_WARN, "Balloon " << balloon.GetId() << " failed to SetNeighbor!");
     }
 }
 
 // Generic recieve function for testing
-void ReceivePacket(Ptr<Socket> socket)
+void ReceiveHeartBeatPacket(Ptr<Socket> socket)
 {
     Ptr<Packet> pkt = NULL;
     uint32_t pkt_size = 0;
@@ -275,7 +275,7 @@ static void createReceiver(Ptr<Node> receiver, uint16_t port) {
   map.AddMapping(local.GetIpv4(), receiver->GetObject<MobilityModel>()->GetPosition());
   recvSink->Bind (local);
   if (port == 80) {
-    recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
+    recvSink->SetRecvCallback (MakeCallback (&ReceiveHeartBeatPacket));
   } else {
     recvSink->SetRecvCallback(MakeCallback(&ReceiveGeneralPacket));
   }
