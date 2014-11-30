@@ -2,12 +2,14 @@
 
 Balloon::Balloon() {
     node = NULL;
-    ett = 0;
+    etx = 0;
+    etx_next_node = 0;
 }
 
 Balloon::Balloon(ns3::Ptr<ns3::Node> _node) {
   node = _node;
-  ett = 0;
+  etx = 0;
+  etx_next_node = 0;
 }
 
 uint32_t Balloon::GetId() const {
@@ -22,8 +24,8 @@ ns3::Vector3D Balloon::GetPosition() const {
   return node->GetObject<ns3::MobilityModel>()->GetPosition();
 }
 
-unsigned int Balloon::GetEtt() const {
-  return ett;
+unsigned int Balloon::GetEtx() const {
+  return etx;
 }
 
 ns3::Ipv4Address Balloon::GetIpv4Addr() const {
@@ -37,18 +39,31 @@ ns3::Ipv4Address Balloon::GetIpv4Addr() const {
   return addr;
 }
 
-bool Balloon::SetNeighbor(const uint32_t& node_id, const struct Neighbor& neighbor)
+bool Balloon::AddHeartBeat(const uint32_t& node_id, const struct HeartBeat& hb)
 {
     // Check if any entry for node_id exists
-    std::unordered_map<uint32_t, struct Neighbor>::iterator entry = neighbors.find(node_id);
-    if (entry == neighbors.end()) {
+    std::map<uint32_t, struct Neighbor>::iterator entry = neighbors.find(node_id);
+    if (entry == neighbors.end())
+    {
         // if not, create it
-        neighbors.emplace(node_id, neighbor);
+        struct Neighbor nb;
+        nb.ip_addr = hb.sender_ip;
+        nb.etx_gw = hb.etx_gw;
+        nb.forward_delivery_ratio = GetForwardDeliveryRatio(hb);
+        nb.reverse_delivery_ratio = 0;
+        nb.position = hb.position;
+        nb.updated = hb.timestamp;
+        nb.heartbeats.emplace(hb.timestamp);
     }
     else
     {
         // If it does, update
-        entry->second = neighbor;
+        entry->second.ip_addr = hb.sender_ip;
+        entry->second.etx_gw = hb.etx_gw;
+        entry->second.position = hb.position;
+        entry->second.updated = hb.timestamp;
+        entry->second.heartbeats.emplace(hb.timestamp);
+        entry->second.forward_delivery_ratio = GetForwardDeliveryRatio(hb);
     }
 
     return true;
@@ -57,7 +72,7 @@ bool Balloon::SetNeighbor(const uint32_t& node_id, const struct Neighbor& neighb
 bool Balloon::GetNeighbor(const uint32_t& node_id, struct Neighbor* neighbor)
 {
     // Check if any entry for node_id exists
-    std::unordered_map<uint32_t, struct Neighbor>::iterator entry = neighbors.find(node_id);
+    std::map<uint32_t, struct Neighbor>::iterator entry = neighbors.find(node_id);
     if (entry == neighbors.end())
     {
         // if not, return false
@@ -75,3 +90,68 @@ bool Balloon::GetNeighbor(const uint32_t& node_id, struct Neighbor* neighbor)
         return true;
     }
 }
+
+
+struct HeartBeat Balloon::CreateHeartBeat()
+{
+    struct HeartBeat hb;
+
+    // iterate through neighbors
+    std::map<uint32_t, struct Neighbor>::iterator itr;
+    for (itr = neighbors.begin(); itr != neighbors.end(); ++itr)
+    {
+        // trim set of timestamps of received heartbeats
+        itr->second.heartbeats.erase(itr->second.heartbeats.begin(),
+                                     itr->second.heartbeats.lower_bound(ns3::Simulator::Now()
+                                     - ns3::Time::FromInteger(BALLOON_ETX_MULTIPLE * BALLOON_HEARTBEAT_INTERVAL , ns3::Time::S)));
+
+        // if there are none within the time window, we've loss touch with this neighbor, so erase from the table
+        if (itr->second.heartbeats.size() == 0)
+        {
+            neighbors.erase(itr);
+            continue;
+        }
+
+        // use loss ratio set to estimate loss ratio from neighbor
+        itr->second.reverse_delivery_ratio = itr->second.heartbeats.size() / BALLOON_ETX_MULTIPLE; 
+
+        // if etx_gw + etx is smaller than my etx_gw, update my etx_gw
+        uint32_t test_etx = 0;
+        if (itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0)
+        {
+            test_etx = itr->second.etx_gw + (1.0 / (itr->second.reverse_delivery_ratio * itr->second.forward_delivery_ratio));
+            if (test_etx < etx)
+            {
+                etx = test_etx;
+                etx_next_node = itr->first;
+            }
+        }
+
+        hb.delivery_ratios.emplace(itr->first, itr->second.reverse_delivery_ratio); 
+    }
+
+    // create my heartbeat message
+    hb.position = GetPosition();
+    hb.etx_gw = GetEtx();
+    hb.SenderId = GetId();
+    hb.sender_ip = GetIpv4Addr();
+    hb.timestamp = ns3::Simulator::Now();
+
+    return hb;    
+}
+
+double Balloon::GetForwardDeliveryRatio(const struct HeartBeat& hb) const
+{
+    // get forward delivery ratio. If it's not included in the HeartBeat, return zero
+    // do this by checking if our ID has an entry in the incoming delivery_ratios map
+    std::map<uint32_t, double>::const_iterator itr = hb.delivery_ratios.find(GetId());
+    if (itr == hb.delivery_ratios.end())
+    {
+        return 0.0;
+    }
+    else
+    {
+        return itr->second;
+    } 
+}
+

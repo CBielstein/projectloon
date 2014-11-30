@@ -19,4 +19,7 @@
 // heartbeat interval
 #define BALLOON_HEARTBEAT_INTERVAL 1.0
 
+// a positive multiple of BALLON_HEARTBEAT_INTERVAL to use for the ETX interval
+#define BALLOON_ETX_MULTIPLE 10.0
+
 #endif

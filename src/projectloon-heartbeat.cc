@@ -46,13 +46,6 @@ using namespace ns3;
 
 // Define globals
 
-struct HeartBeat
-{
-    uint32_t SenderId;
-    uint32_t ETT;
-    Vector3D Position;
-    Ipv4Address sender_ip;
-};
 
 IPtoGPS map;
 NetDeviceContainer ueDevs;
@@ -84,13 +77,7 @@ double Jitter(double input)
 // Function to handle receiving a heartbeat message
 static void ReceiveHeartBeat(const struct HeartBeat& hb, Balloon& balloon)
 {
-    // Create neighbor struct
-    struct Neighbor nb;
-    nb.gateway_ett = hb.ETT;
-    nb.position = hb.Position;
-    nb.ip_addr = hb.sender_ip; 
-
-    if (!balloon.SetNeighbor(hb.SenderId, nb))
+    if (!balloon.AddHeartBeat(hb.SenderId, hb))
     {
         NS_LOG(ns3::LOG_WARN, "Balloon " << balloon.GetId() << " failed to SetNieghbor!");
     }
@@ -139,7 +126,7 @@ void ReceivePacket(Ptr<Socket> socket)
         else
         {
             NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() 
-                   << ": Coords" << msg.Position << ", ETT: " << msg.ETT << ", SenderId: " << msg.SenderId);
+                   << ": Coords" << msg.position << ", ETX: " << msg.etx_gw << ", SenderId: " << msg.SenderId);
             
             ReceiveHeartBeat(msg, *balloon);
         }
@@ -149,12 +136,8 @@ void ReceivePacket(Ptr<Socket> socket)
 // Send a regular heartbeat message
 static void SendHeartBeat(Ptr<Socket> socket, Balloon& balloon, Time hbInterval)
 {
-    // Set struct values
-    struct HeartBeat hb;
-    hb.Position = balloon.GetPosition();
-    hb.ETT = balloon.GetEtt();
-    hb.SenderId = balloon.GetId();
-    hb.sender_ip = balloon.GetIpv4Addr();
+    // Get the HeartBeat
+    struct HeartBeat hb = balloon.CreateHeartBeat();
 
     // Send packet
     socket->Send(Create<Packet>((uint8_t*) &hb, sizeof(struct HeartBeat)));
@@ -433,7 +416,6 @@ int main (int argc, char *argv[])
   Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, numBalloons, gateways);
 
   // activate heartbeats
-  // TODO randomize jittering to avoid collisions
   for (unsigned int i = 0; i < numBalloons; ++i)
   {
     // Schedule the event, with the jitter
