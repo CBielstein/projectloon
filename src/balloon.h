@@ -18,8 +18,17 @@ struct HeartBeat
     // Node ID of sender
     uint32_t SenderId;
 
+    // True if this is advertising itself as a gateway
+    bool is_gateway;
+
+    // True if this is directly or indirectly connected to a gateway
+    bool has_connection;
+
     // Advertised lowest ETX to a gateway
     uint32_t etx_gw;
+
+    // Next hop on the path (used to eliminate count to infinity problems)
+    uint32_t gw_next_node;
 
     // Position of the balloon when sent
     ns3::Vector3D position;
@@ -40,8 +49,17 @@ struct Neighbor
     // The IP address of the neighboring node
     ns3::Ipv4Address ip_addr;
 
+    // True if this is advertising itself as a gateway
+    bool is_gateway;
+
+    // True if this is directly or indirectly connected to a gateway
+    bool has_connection;
+
     // The lowest etx to a gateway advertised by the neighboring node
-    unsigned int etx_gw;
+    uint32_t etx_gw;
+
+    // Next hop on the path (used to eliminate count to infinity problems)
+    uint32_t gw_next_node;
 
     // Delivery ratio from this neighbor
     double reverse_delivery_ratio;
@@ -127,11 +145,14 @@ class Balloon
         // the node that relates to this Balloon 
         ns3::Ptr<ns3::Node> node;
 
+        // True if we have a connection, false if not
+        bool connected;
+
         // the lowest ETX from this balloon to a gateway
-        uint32_t etx;
+        uint32_t etx_gw;
 
         // The next node to hop to for the gateway
-        int32_t etx_next_node;
+        uint32_t gw_next_node;
 
         // Map to information about my neighbors
         std::map<uint32_t, struct Neighbor> neighbors;

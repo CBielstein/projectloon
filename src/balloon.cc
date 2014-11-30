@@ -2,14 +2,16 @@
 
 Balloon::Balloon() {
     node = NULL;
-    etx = 0;
-    etx_next_node = 0;
+    etx_gw = 0;
+    gw_next_node = 0;
+    connected = false;
 }
 
 Balloon::Balloon(ns3::Ptr<ns3::Node> _node) {
   node = _node;
-  etx = 0;
-  etx_next_node = 0;
+  etx_gw = 0;
+  gw_next_node = 0;
+  connected = false;
 }
 
 uint32_t Balloon::GetId() const {
@@ -24,8 +26,8 @@ ns3::Vector3D Balloon::GetPosition() const {
   return node->GetObject<ns3::MobilityModel>()->GetPosition();
 }
 
-unsigned int Balloon::GetEtx() const {
-  return etx;
+uint32_t Balloon::GetEtx() const {
+  return etx_gw;
 }
 
 ns3::Ipv4Address Balloon::GetIpv4Addr() const {
@@ -48,18 +50,26 @@ bool Balloon::AddHeartBeat(const uint32_t& node_id, const struct HeartBeat& hb)
         // if not, create it
         struct Neighbor nb;
         nb.ip_addr = hb.sender_ip;
+        nb.is_gateway = hb.is_gateway;
+        nb.has_connection = hb.has_connection;
+        nb.gw_next_node = hb.gw_next_node;
         nb.etx_gw = hb.etx_gw;
         nb.forward_delivery_ratio = GetForwardDeliveryRatio(hb);
         nb.reverse_delivery_ratio = 0;
         nb.position = hb.position;
         nb.updated = hb.timestamp;
         nb.heartbeats.emplace(hb.timestamp);
+
+        neighbors.emplace(node_id, nb);
     }
     else
     {
         // If it does, update
         entry->second.ip_addr = hb.sender_ip;
+        entry->second.is_gateway = hb.is_gateway;
+        entry->second.has_connection = hb.has_connection;
         entry->second.etx_gw = hb.etx_gw;
+        entry->second.gw_next_node = hb.gw_next_node;
         entry->second.position = hb.position;
         entry->second.updated = hb.timestamp;
         entry->second.heartbeats.emplace(hb.timestamp);
@@ -95,6 +105,7 @@ bool Balloon::GetNeighbor(const uint32_t& node_id, struct Neighbor* neighbor)
 struct HeartBeat Balloon::CreateHeartBeat()
 {
     struct HeartBeat hb;
+    bool found_connection = false;
 
     // iterate through neighbors
     std::map<uint32_t, struct Neighbor>::iterator itr;
@@ -117,23 +128,40 @@ struct HeartBeat Balloon::CreateHeartBeat()
 
         // if etx_gw + etx is smaller than my etx_gw, update my etx_gw
         uint32_t test_etx = 0;
-        if (itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0)
+        if ((itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0)
+            && (itr->second.has_connection || itr->second.is_gateway))
         {
-            test_etx = itr->second.etx_gw + (1.0 / (itr->second.reverse_delivery_ratio * itr->second.forward_delivery_ratio));
-            if (test_etx < etx)
+            test_etx = (1.0 / (itr->second.reverse_delivery_ratio * itr->second.forward_delivery_ratio));
+
+            // if the neighbor isn't a gateway, include their advertised etx to a gateway
+            if (!itr->second.is_gateway)
             {
-                etx = test_etx;
-                etx_next_node = itr->first;
+                test_etx += itr->second.etx_gw;
+            }
+
+            // this is our new connection if we don't have connection OR this is a lower ETX than our existing connection
+            // AND if this route does not refer to us as the next hop (avoid count to infinity)
+            if ((test_etx < etx_gw || !connected) && itr->second.gw_next_node != GetId())
+            {
+                etx_gw = test_etx;
+                gw_next_node = itr->first;
+                found_connection = false;
             }
         }
 
         hb.delivery_ratios.emplace(itr->first, itr->second.reverse_delivery_ratio); 
     }
 
+    // update our connected status
+    connected = found_connection;
+
     // create my heartbeat message
-    hb.position = GetPosition();
-    hb.etx_gw = GetEtx();
     hb.SenderId = GetId();
+    hb.is_gateway = false;
+    hb.has_connection = connected;
+    hb.etx_gw = etx_gw;
+    hb.gw_next_node = gw_next_node;
+    hb.position = GetPosition();
     hb.sender_ip = GetIpv4Addr();
     hb.timestamp = ns3::Simulator::Now();
 
