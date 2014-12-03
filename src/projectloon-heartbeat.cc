@@ -51,7 +51,7 @@ IPtoGPS map;
 NetDeviceContainer ueDevs;
 NetDeviceContainer enbDevs;
 Ptr<LteHelper> lteHelper;
-Balloon* balloons;
+Balloon** balloons;
 unsigned int numBalloons; 
 uint16_t otherPort = 88;
 
@@ -80,7 +80,7 @@ static void ReceiveHeartBeat(const struct HeartBeat& hb, Balloon& balloon)
 {
     if (!balloon.AddHeartBeat(hb.SenderId, hb))
     {
-        NS_LOG(ns3::LOG_WARN, "Balloon " << balloon.GetId() << " failed to SetNeighbor!");
+        NS_LOG(ns3::LOG_WARN, "Balloon " << balloon.GetId() << " failed to AddHeartBeat!");
     }
 }
 
@@ -90,16 +90,16 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
     Ptr<Packet> pkt = NULL;
     uint32_t pkt_size = 0;
     uint32_t cpy_size = 0;
-    struct HeartBeat msg;
+    struct HeartBeat* msg = (struct HeartBeat*)malloc(sizeof(struct HeartBeat));
 
     // find the matching balloon object to the socket
     uint32_t node_id = socket->GetNode()->GetId();
     Balloon* balloon = NULL;
     for (unsigned int i = 0; i < numBalloons; ++i)
     {
-        if (node_id == balloons[i].GetId())
+        if (node_id == balloons[i]->GetId())
         {
-            balloon = &balloons[i];
+            balloon = balloons[i];
             break;
         }
     } 
@@ -114,24 +114,28 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
     while (pkt = socket->Recv())
     {
         pkt_size = sizeof(struct HeartBeat);
-        cpy_size = pkt->CopyData((uint8_t*)&msg, pkt_size);     
+        cpy_size = pkt->CopyData((uint8_t*)msg, pkt_size);
         if (pkt_size != cpy_size)
         {
-            NS_LOG(ns3::LOG_DEBUG, "pkt_size != cpy_size: " << pkt_size << " != " << cpy_size);
+            NS_LOG(ns3::LOG_WARN, "pkt_size != cpy_size: " << pkt_size << " != " << cpy_size);
         }
 
-        if (msg.SenderId == socket->GetNode()->GetId())
+        if (msg->SenderId == socket->GetNode()->GetId())
         {
             NS_LOG(ns3::LOG_DEBUG, "Hearing from myself! " << socket->GetNode()->GetId());
         }
         else
         {
-//            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() 
-//                   << ": Coords" << msg.position << ", ETX: " << msg.etx_gw << ", SenderId: " << msg.SenderId);
-            
-            ReceiveHeartBeat(msg, *balloon);
+            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId()
+                   << " From: " << msg->SenderId << std::endl << "    IsGateway: " << msg->is_gateway << ", HasConnection: "
+                   << msg->has_connection << ", etx_gw: " << msg->etx_gw << std::endl << "    next hop: " << msg->gw_next_node
+                   << ", Position: " << msg->position << ", Sender IP: " << msg->sender_ip << std::endl << "    Time: "
+                   << msg->timestamp << ", #Ratios: " << msg->delivery_ratios.size());
+
+            ReceiveHeartBeat(*msg, *balloon);
         }
     }
+    free(msg);
 }
 
 void ReceiveGeneralPacket(Ptr<Socket> socket)
@@ -180,10 +184,16 @@ static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
 }
 
 // Send a regular heartbeat message
-static void SendHeartBeat(Ptr<Socket> socket, Balloon& balloon, Time hbInterval)
+static void SendHeartBeat(Ptr<Socket> socket, Balloon* balloon, Time hbInterval)
 {
+    if (balloon == NULL)
+    {
+        NS_LOG(ns3::LOG_WARN, "SendHeartBeat() passed NULL balloon");
+        return;
+    }
+
     // Get the HeartBeat
-    struct HeartBeat hb = balloon.CreateHeartBeat();
+    struct HeartBeat hb = balloon->CreateHeartBeat();
 
     // Create Packet separately, in case we need to add anything to it...
     Ptr<Packet> packet = Create<Packet>((uint8_t*) &hb, sizeof(struct HeartBeat));
@@ -216,29 +226,28 @@ static Vector3D Normalize(const Vector3D& v, double scale)
 }
 
 // Takes the nodecontainers for the balloons and the gateways (on the ground) and finds the correct movement for each balloon
-static void UpdateBalloonPositions(Balloon* balloons, size_t numBalloons, const NodeContainer& gateways)
+static void UpdateBalloonPositions(const NodeContainer& gateways)
 {
     // ensure we aren't passed empty containers
-    if (balloons == NULL || numBalloons  < 1 || gateways.GetN() < 1)
+    if (numBalloons  < 1 || gateways.GetN() < 1)
     {
-        NS_LOG(ns3::LOG_ERROR, "Entered UpdateBalloonPositions with balloons: " << balloons
-                << " and length: " << numBalloons << " and gateways size: " << gateways.GetN());
+        NS_LOG(ns3::LOG_ERROR, "Entered UpdateBalloonPositions with length: " << numBalloons << " and gateways size: " << gateways.GetN());
         return;
     }
 
     // for each balloon, find closest gateway and move toward it at speed
     for (unsigned int i = 0; i < numBalloons; ++i)
     {
-        Ptr<ConstantVelocityMobilityModel> balloon_mobility = balloons[i].GetNode()->GetObject<ConstantVelocityMobilityModel>();
+        Ptr<ConstantVelocityMobilityModel> balloon_mobility = balloons[i]->GetNode()->GetObject<ConstantVelocityMobilityModel>();
         Vector3D balloon_position = balloon_mobility->GetPosition();
 
         // update position
-        if(!map.UpdateMapping(balloons[i].GetIpv4Addr(), balloon_position))
+        if(!map.UpdateMapping(balloons[i]->GetIpv4Addr(), balloon_position))
         {
-            NS_LOG(ns3::LOG_WARN, "Failed to update position for IP address " << balloons[i].GetIpv4Addr());
+            NS_LOG(ns3::LOG_WARN, "Failed to update position for IP address " << balloons[i]->GetIpv4Addr());
         }
 
-        NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << " balloon " << balloons[i].GetId()
+        NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << " balloon " << balloons[i]->GetId()
                         << ": Position: " << balloon_position 
                         << "   Speed:" << balloon_mobility->GetVelocity());
 
@@ -286,7 +295,7 @@ static void UpdateBalloonPositions(Balloon* balloons, size_t numBalloons, const 
     }
     
     // schedule this to happen again in BALLOON_POSITION_UPDATE_RATE seconds
-    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, numBalloons, gateways);
+    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, gateways);
 }
 
 // Creates a receiver!
@@ -452,7 +461,7 @@ int main (int argc, char *argv[])
   // Create Receivers and senders
   std::vector<Ptr<Socket>> heartbeatSources;
   std::vector<Ptr<Socket>> sources;
-  balloons = (Balloon*)calloc(numBalloons, sizeof(Balloon));
+  balloons = (Balloon**)calloc(numBalloons, sizeof(Balloon*));
   for (unsigned int i = 0; i < numBalloons; ++i)
   {
     // Create sender sockets for heartbeat messages
@@ -464,14 +473,14 @@ int main (int argc, char *argv[])
     // Create reciever sockets for other messages
     createReceiver(balloonNodes.Get(i), otherPort);
     // Add node to the balloons array
-    balloons[i] = Balloon(balloonNodes.Get(i));
+    balloons[i] = new Balloon(balloonNodes.Get(i));
   }
 
 
   // ** Schedule events **
 
   // update position and do movement
-  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, balloons, numBalloons, gateways);
+  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, gateways);
 
   // activate heartbeats
   for (unsigned int i = 0; i < numBalloons; ++i)
@@ -489,7 +498,7 @@ int main (int argc, char *argv[])
   // ** Generate traffic to specific node, in this case, node 1 **
   Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTrafficSpecific, 
-                                  sources[0], packetSize, numPackets, interPacketInterval, balloons[1].GetIpv4Addr());
+                                  sources[0], packetSize, numPackets, interPacketInterval, balloons[1]->GetIpv4Addr());
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
@@ -498,6 +507,10 @@ int main (int argc, char *argv[])
 
 
   // ** Clean up **
+  for (unsigned int i = 0; i < numBalloons; ++i)
+  {
+    free(balloons[i]);
+  }
   free(balloons);
 
   // yay we're done
