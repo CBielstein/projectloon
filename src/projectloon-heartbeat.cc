@@ -38,6 +38,7 @@
 // Our includes
 #include "IPtoGPS.h"
 #include "balloon.h"
+#include "gateway.h"
 #include "defines.h"
 
 NS_LOG_COMPONENT_DEFINE ("LoonHeartbeat");
@@ -473,7 +474,12 @@ int main (int argc, char *argv[])
     // Create reciever sockets for other messages
     createReceiver(balloonNodes.Get(i), otherPort);
     // Add node to the balloons array
-    balloons[i] = new Balloon(balloonNodes.Get(i));
+
+    // TODO remove this testing hack
+    if (i == 0)
+        balloons[i] = new Gateway(balloonNodes.Get(i));
+    else
+        balloons[i] = new Balloon(balloonNodes.Get(i));
   }
 
 

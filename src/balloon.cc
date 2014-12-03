@@ -128,8 +128,7 @@ struct HeartBeat Balloon::CreateHeartBeat()
 
         // if etx_gw + etx is smaller than my etx_gw, update my etx_gw
         uint32_t test_etx = 0;
-        if ((itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0)
-            && (itr->second.has_connection || itr->second.is_gateway))
+        if ((itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0))
         {
             test_etx = (1.0 / (itr->second.reverse_delivery_ratio * itr->second.forward_delivery_ratio));
 
@@ -140,8 +139,12 @@ struct HeartBeat Balloon::CreateHeartBeat()
             }
 
             // this is our new connection if we don't have connection OR this is a lower ETX than our existing connection
+            // AND the other node is either a gateway or has connection to a gateawy
             // AND if this route does not refer to us as the next hop (avoid count to infinity)
-            if ((test_etx < etx_gw || !connected) && itr->second.gw_next_node != GetId())
+
+            if ((test_etx < etx_gw || !connected) &&
+                (itr->second.has_connection || itr->second.is_gateway) &&
+                (itr->second.gw_next_node != GetId()))
             {
                 etx_gw = test_etx;
                 gw_next_node = itr->first;
@@ -157,7 +160,7 @@ struct HeartBeat Balloon::CreateHeartBeat()
 
     // create my heartbeat message
     hb.SenderId = GetId();
-    hb.is_gateway = false;
+    hb.is_gateway = IsGateway();
     hb.has_connection = connected;
     hb.etx_gw = etx_gw;
     hb.gw_next_node = gw_next_node;
