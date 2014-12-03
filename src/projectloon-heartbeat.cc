@@ -53,6 +53,7 @@ NetDeviceContainer enbDevs;
 Ptr<LteHelper> lteHelper;
 Balloon* balloons;
 unsigned int numBalloons; 
+uint16_t otherPort = 88;
 
 // ** Define helper functions **
 
@@ -125,8 +126,8 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
         }
         else
         {
-            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() 
-                   << ": Coords" << msg.position << ", ETX: " << msg.etx_gw << ", SenderId: " << msg.SenderId);
+//            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId() 
+//                   << ": Coords" << msg.position << ", ETX: " << msg.etx_gw << ", SenderId: " << msg.SenderId);
             
             ReceiveHeartBeat(msg, *balloon);
         }
@@ -150,6 +151,27 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
       Simulator::Schedule (pktInterval, &GenerateTraffic,
                            socket, pktSize,pktCount-1, pktInterval);
       NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left");
+    }
+  else
+    {
+      socket->Close ();
+    }
+}
+
+// address refers to node that you're sending to
+static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
+                             uint32_t pktCount, Time pktInterval, Ipv4Address& address )
+{
+  if (pktCount > 0)
+    {
+      // not really sure what the flag is.... so I chose 16 lol
+      int test = socket->SendTo (Create<Packet> (pktSize), 16, InetSocketAddress (address, 88));
+      if (test == -1) {
+        NS_LOG(ns3::LOG_DEBUG, "rawr");
+      }
+      Simulator::Schedule (pktInterval, &GenerateTrafficSpecific,
+                           socket, pktSize,pktCount-1, pktInterval, address);
+      NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left "<< address);
     }
   else
     {
@@ -307,7 +329,6 @@ int main (int argc, char *argv[])
   double interval = 1.0; // seconds
   bool verbose = false;
   uint16_t heartbeatPort = 80;
-  uint16_t otherPort = 88;
 
   // parse the command line
   CommandLine cmd;
@@ -459,9 +480,16 @@ int main (int argc, char *argv[])
     Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, heartbeatSources[i], balloons[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
   }
 
+  // ** Generate broadcast traffic **
+  //Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
+  //                                Seconds (1.0), &GenerateTraffic, 
+  //                                sources[0], packetSize, numPackets, interPacketInterval);
+
+
+  // ** Generate traffic to specific node, in this case, node 1 **
   Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
-                                  Seconds (1.0), &GenerateTraffic, 
-                                  sources[0], packetSize, numPackets, interPacketInterval);
+                                  Seconds (1.0), &GenerateTrafficSpecific, 
+                                  sources[0], packetSize, numPackets, interPacketInterval, balloons[1].GetIpv4Addr());
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
