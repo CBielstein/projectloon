@@ -39,6 +39,7 @@
 #include "IPtoGPS.h"
 #include "balloon.h"
 #include "defines.h"
+#include "loonheader.h"
 
 NS_LOG_COMPONENT_DEFINE ("LoonHeartbeat");
 
@@ -159,7 +160,7 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
 }
 
 // address refers to node that you're sending to
-static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
+/*static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
                              uint32_t pktCount, Time pktInterval, Ipv4Address& address )
 {
   if (pktCount > 0)
@@ -170,6 +171,32 @@ static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
         NS_LOG(ns3::LOG_DEBUG, "rawr");
       }
       Simulator::Schedule (pktInterval, &GenerateTrafficSpecific,
+                           socket, pktSize,pktCount-1, pktInterval, address);
+      NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left "<< address);
+    }
+  else
+    {
+      socket->Close ();
+    }
+}*/
+
+// Multi hop stuff
+static void GenerateTrafficMultiHop (Ptr<Socket> socket, uint32_t pktSize,
+                             uint32_t pktCount, Time pktInterval, Ipv4Address& address )
+{
+  if (pktCount > 0)
+    {
+      Ptr<Packet> packet = Create<Packet>(pktSize);
+      LoonHeader header;
+      header.SetDest(address.Get());
+      packet->AddHeader(header);
+
+      // not really sure what the flag is.... so I chose 16 lol
+      int test = socket->Send(packet);
+      if (test == -1) {
+        NS_LOG(ns3::LOG_DEBUG, "rawr");
+      }
+      Simulator::Schedule (pktInterval, &GenerateTrafficMultiHop,
                            socket, pktSize,pktCount-1, pktInterval, address);
       NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left "<< address);
     }
@@ -488,7 +515,7 @@ int main (int argc, char *argv[])
 
   // ** Generate traffic to specific node, in this case, node 1 **
   Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
-                                  Seconds (1.0), &GenerateTrafficSpecific, 
+                                  Seconds (1.0), &GenerateTrafficMultiHop, 
                                   sources[0], packetSize, numPackets, interPacketInterval, balloons[1].GetIpv4Addr());
   // ** Begin the simulation **
 
