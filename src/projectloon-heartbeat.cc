@@ -549,12 +549,12 @@ int main (int argc, char *argv[])
   // ** Generate traffic to specific node, in this case, node 1 **
   //Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
   //                                Seconds (1.0), &GenerateTrafficSpecific, 
-  //                                sources[0], packetSize, numPackets, interPacketInterval, balloons[1].GetIpv4Addr());
+  //                                sources[0], packetSize, numPackets, interPacketInterval, balloons[1]->GetIpv4Addr());
 
   // ** Generate traffic with a final destination in mind. In this case, the final destination is node 1 **
   Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTrafficMultiHop, 
-                                  sources[0], packetSize, numPackets, interPacketInterval, balloons[1].GetIpv4Addr());
+                                  sources[0], packetSize, numPackets, interPacketInterval, balloons[1]->GetIpv4Addr());
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
