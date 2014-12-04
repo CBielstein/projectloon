@@ -77,6 +77,8 @@ struct Neighbor
     std::set<ns3::Time> heartbeats;
 };
 
+// TODO if there's enough time before the project deadline refactor so that
+// Balloon and Gateway both extend some base class
 // This class accompanies the nodes in a NodeContainer.
 // Sadly, it seemed nearly impossible to extend ns3::Node, so we did this to save time. 
 class Balloon
@@ -144,6 +146,10 @@ class Balloon
 
         // the node that relates to this Balloon 
         ns3::Ptr<ns3::Node> node;
+
+        // Used to determine if this node is a gateway
+        // Overridden in Gateway
+        virtual bool IsGateway() { return false; }
 
         // True if we have a connection, false if not
         bool connected;
