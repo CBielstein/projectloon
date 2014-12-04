@@ -142,11 +142,12 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
       LoonHeader destinationHeader;
       packet->PeekHeader(destinationHeader);
       NS_LOG(ns3::LOG_DEBUG, "header data " << Ipv4Address(destinationHeader.GetDest()));
-      Node node = socket->GetNode();
-      Ipv4InterfaceAddress iaddr = node->GetAddress(1,0);
+      Ptr<Node> node = socket->GetNode();
+      Ptr<Ipv4> ipv4 = node->GetObject<ns3::Ipv4>();
+      Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1,0);
       Ipv4Address addr = iaddr.GetLocal();
       if (Ipv4Address(destinationHeader.GetDest()) == addr) {
-        NS_LOG(ns3::LOG_DEBUG, "wooooo");
+        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
       } 
       NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
     }
