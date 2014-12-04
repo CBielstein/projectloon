@@ -139,17 +139,25 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
 {
     while (Ptr<Packet> packet = socket->Recv())
     {
+      // Peek at the header of the packet; we don't want to remove the header in case we need to
+      // forward it elsewhere
       LoonHeader destinationHeader;
       packet->PeekHeader(destinationHeader);
-      NS_LOG(ns3::LOG_DEBUG, "header data " << Ipv4Address(destinationHeader.GetDest()));
+      Ipv4Address dest = Ipv4Address(destinationHeader.GetDest());
+      // Used for debugging, but not generally needed.
+      // NS_LOG(ns3::LOG_DEBUG, "header data " << dest);
+
+      // Taken from balloons.cc; gets the address of the current socket
       Ptr<Node> node = socket->GetNode();
       Ptr<Ipv4> ipv4 = node->GetObject<ns3::Ipv4>();
       Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1,0);
       Ipv4Address addr = iaddr.GetLocal();
-      if (Ipv4Address(destinationHeader.GetDest()) == addr) {
+
+      if (dest == addr) {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
-      } 
-      NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
+      } else {
+        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
+      }
     }
 }
 
@@ -170,7 +178,7 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
 }
 
 // address refers to node that you're sending to
-/*static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
+static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
                              uint32_t pktCount, Time pktInterval, Ipv4Address& address )
 {
   if (pktCount > 0)
@@ -182,15 +190,15 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
       }
       Simulator::Schedule (pktInterval, &GenerateTrafficSpecific,
                            socket, pktSize,pktCount-1, pktInterval, address);
-      NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left "<< address);
+      NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left to send to address "<< address);
     }
   else
     {
       socket->Close ();
     }
-}*/
+}
 
-// Multi hop stuff
+// Generates traffic where the destination may not be one of the sender's neighbors
 static void GenerateTrafficMultiHop (Ptr<Socket> socket, uint32_t pktSize,
                              uint32_t pktCount, Time pktInterval, Ipv4Address& address )
 {
@@ -524,6 +532,11 @@ int main (int argc, char *argv[])
 
 
   // ** Generate traffic to specific node, in this case, node 1 **
+  //Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
+  //                                Seconds (1.0), &GenerateTrafficSpecific, 
+  //                                sources[0], packetSize, numPackets, interPacketInterval, balloons[1].GetIpv4Addr());
+
+  // ** Generate traffic with a final destination in mind. In this case, the final destination is node 1 **
   Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTrafficMultiHop, 
                                   sources[0], packetSize, numPackets, interPacketInterval, balloons[1].GetIpv4Addr());
