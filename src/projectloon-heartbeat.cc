@@ -70,8 +70,8 @@ double Jitter(double input)
         did_seed_rand = true;
     }
 
-    // create a random number [0,50], then [-25,25], then [-.25,.25]
-    double percentage = ((rand() % 51) - 25) / 100.0;
+    // create a random number [0,(2*JITTER_PERCENT)+1], then [-JITTER_PERCENT,JITTER_PERCENT], then as fraction
+    double percentage = ((rand() % int((2.0 * JITTER_PERCENT) + 1)) - JITTER_PERCENT) / 100.0;
 
     // return the the input with the jttered percentage difference
     return input + (input * percentage);
@@ -132,7 +132,7 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
                    << " From: " << msg->SenderId << std::endl << "    IsGateway: " << msg->is_gateway << ", HasConnection: "
                    << msg->has_connection << ", etx_gw: " << msg->etx_gw << std::endl << "    next hop: " << msg->gw_next_node
                    << ", Position: " << msg->position << ", Sender IP: " << msg->sender_ip << std::endl << "    Time: "
-                   << msg->timestamp << ", #Ratios: " << msg->delivery_ratios.size());
+                   << msg->timestamp << ", #Ratios: " << msg->delivery_ratios->size());
 
             ReceiveHeartBeat(*msg, *balloon);
         }

@@ -22,4 +22,7 @@
 // a positive multiple of BALLON_HEARTBEAT_INTERVAL to use for the ETX interval
 #define BALLOON_ETX_MULTIPLE 10.0
 
+// the percentage of jitter applied by the Jitter() function
+#define JITTER_PERCENT 25.0
+
 #endif
