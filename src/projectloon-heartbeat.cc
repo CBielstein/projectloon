@@ -137,8 +137,12 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
 
 void ReceiveGeneralPacket(Ptr<Socket> socket)
 {
-    while (socket->Recv())
+    while (Ptr<Packet> packet = socket->Recv())
     {
+      LoonHeader destinationHeader;
+      packet->PeekHeader(destinationHeader);
+      NS_LOG(ns3::LOG_DEBUG, "header data " << Ipv4Address(destinationHeader.GetDest()));
+      
       NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
     }
 }
