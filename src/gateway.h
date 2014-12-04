@@ -9,8 +9,8 @@
 class Gateway : public Balloon
 {
     public:
-        Gateway() : Balloon() {}
-        Gateway(ns3::Ptr<ns3::Node> _node) : Balloon(_node) {}
+        Gateway() : Balloon() { connected = false; }
+        Gateway(ns3::Ptr<ns3::Node> _node) : Balloon(_node) { connected = false; }
 
     private:
         bool IsGateway() { return true; }

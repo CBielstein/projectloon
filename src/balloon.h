@@ -13,6 +13,8 @@
 #include <set>
 
 // Holds information for heartbeats between balloons
+// This is a struct and not a class to ensure data is stored in memory together
+// so that it can be sent as a message
 struct HeartBeat
 {
     // Node ID of sender
@@ -40,7 +42,7 @@ struct HeartBeat
     ns3::Time timestamp;
 
     // Maps node IDs to loss ratios reported by neighbors
-    std::map<uint32_t, double> delivery_ratios;
+    std::map<uint32_t, double>* delivery_ratios;
 };
 
 // A struct to hold information overheard from neighbors
@@ -143,6 +145,11 @@ class Balloon
         // includes updating etx and neighbor fields for now, though this may be too much on every interval 
         struct HeartBeat CreateHeartBeat();
 
+    protected:
+        // True if we have a connection, false if not
+        // protected so gateway can access
+        bool connected;
+
     private:
         // GetForwardDeliveryRatio
         // Finds the forward delivery ratio for this balloon given a heartbeat from a neighboring balloon
@@ -158,9 +165,6 @@ class Balloon
         // Used to determine if this node is a gateway
         // Overridden in Gateway
         virtual bool IsGateway() { return false; }
-
-        // True if we have a connection, false if not
-        bool connected;
 
         // the lowest ETX from this balloon to a gateway
         uint32_t etx_gw;

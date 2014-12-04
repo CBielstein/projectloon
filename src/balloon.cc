@@ -116,6 +116,9 @@ bool Balloon::HasNeighbor(ns3::Ipv4Address addr)
 struct HeartBeat Balloon::CreateHeartBeat()
 {
     struct HeartBeat hb;
+
+    // TODO this is a memory leak
+    hb.delivery_ratios = new std::map<uint32_t, double>();
     bool found_connection = false;
 
     // iterate through neighbors
@@ -125,7 +128,8 @@ struct HeartBeat Balloon::CreateHeartBeat()
         // trim set of timestamps of received heartbeats
         itr->second.heartbeats.erase(itr->second.heartbeats.begin(),
                                      itr->second.heartbeats.lower_bound(ns3::Simulator::Now()
-                                     - ns3::Time::FromInteger(BALLOON_ETX_MULTIPLE * BALLOON_HEARTBEAT_INTERVAL , ns3::Time::S)));
+                                     - ns3::Time::FromInteger(BALLOON_ETX_MULTIPLE * BALLOON_HEARTBEAT_INTERVAL 
+                                     + (2.0 * JITTER_PERCENT / 100.0), ns3::Time::S)));
 
         // if there are none within the time window, we've loss touch with this neighbor, so erase from the table
         if (itr->second.heartbeats.size() == 0)
@@ -138,8 +142,9 @@ struct HeartBeat Balloon::CreateHeartBeat()
         itr->second.reverse_delivery_ratio = itr->second.heartbeats.size() / BALLOON_ETX_MULTIPLE; 
 
         // if etx_gw + etx is smaller than my etx_gw, update my etx_gw
+        // if we're a gateway, we don't need to update etx_gw, so we can save this time
         uint32_t test_etx = 0;
-        if ((itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0))
+        if (!IsGateway() && itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0)
         {
             test_etx = (1.0 / (itr->second.reverse_delivery_ratio * itr->second.forward_delivery_ratio));
 
@@ -149,25 +154,24 @@ struct HeartBeat Balloon::CreateHeartBeat()
                 test_etx += itr->second.etx_gw;
             }
 
-            // this is our new connection if we don't have connection OR this is a lower ETX than our existing connection
+            // this is our new connection if we haven't found a connection OR this is a lower ETX than our existing connection
             // AND the other node is either a gateway or has connection to a gateawy
             // AND if this route does not refer to us as the next hop (avoid count to infinity)
-
-            if ((test_etx < etx_gw || !connected) &&
+            if ((test_etx < etx_gw || !found_connection) &&
                 (itr->second.has_connection || itr->second.is_gateway) &&
                 (itr->second.gw_next_node != GetId()))
             {
                 etx_gw = test_etx;
                 gw_next_node = itr->first;
-                found_connection = false;
+                found_connection = true;
             }
         }
 
-        hb.delivery_ratios.emplace(itr->first, itr->second.reverse_delivery_ratio); 
+        hb.delivery_ratios->emplace(itr->first, itr->second.reverse_delivery_ratio); 
     }
 
     // update our connected status
-    connected = found_connection;
+    connected = IsGateway() ? true : found_connection;
 
     // create my heartbeat message
     hb.SenderId = GetId();
@@ -186,8 +190,8 @@ double Balloon::GetForwardDeliveryRatio(const struct HeartBeat& hb) const
 {
     // get forward delivery ratio. If it's not included in the HeartBeat, return zero
     // do this by checking if our ID has an entry in the incoming delivery_ratios map
-    std::map<uint32_t, double>::const_iterator itr = hb.delivery_ratios.find(GetId());
-    if (itr == hb.delivery_ratios.end())
+    std::map<uint32_t, double>::const_iterator itr = hb.delivery_ratios->find(GetId());
+    if (itr == hb.delivery_ratios->end())
     {
         return 0.0;
     }
