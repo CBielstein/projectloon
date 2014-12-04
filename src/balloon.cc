@@ -101,6 +101,17 @@ bool Balloon::GetNeighbor(const uint32_t& node_id, struct Neighbor* neighbor)
     }
 }
 
+bool Balloon::HasNeighbor(ns3::Ipv4Address addr)
+{
+    // Check if any entry for node_id exists
+    for (std::map<uint32_t, struct Neighbor>::iterator it = neighbors.begin(); it!=neighbors.end(); ++it) {
+      Neighbor neighbor = it->second;
+      if (neighbor.ip_addr == addr) {
+        return true;
+      }
+    }
+    return false;
+}
 
 struct HeartBeat Balloon::CreateHeartBeat()
 {

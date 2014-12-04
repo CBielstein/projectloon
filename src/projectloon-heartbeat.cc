@@ -56,6 +56,7 @@ Ptr<LteHelper> lteHelper;
 Balloon** balloons;
 unsigned int numBalloons; 
 uint16_t otherPort = 88;
+std::vector<Ptr<Socket>> sources;
 
 // ** Define helper functions **
 
@@ -140,17 +141,33 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
     free(msg);
 }
 
+static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address dest) {
+  bool hasNeighbor = balloons[currentNode->GetId()]->HasNeighbor(dest);
+  NS_LOG(ns3::LOG_DEBUG, "Has neighbor or not " << hasNeighbor);
+  if (hasNeighbor) {
+    return packet;
+  } else {
+    // This should be the next hop, as chosen by GPSR
+    return packet;
+  }
+}
+
+Ipv4Address getAddrFromPacket(Ptr<Packet> packet) {
+  // Peek at the header of the packet; we don't want to remove the header in case we need to
+  // forward it elsewhere
+  LoonHeader destinationHeader;
+  packet->PeekHeader(destinationHeader);
+  Ipv4Address dest = Ipv4Address(destinationHeader.GetDest());
+  // Used for debugging, but not generally needed.
+  // NS_LOG(ns3::LOG_DEBUG, "header data " << dest);
+  return dest;
+}
+
 void ReceiveGeneralPacket(Ptr<Socket> socket)
 {
     while (Ptr<Packet> packet = socket->Recv())
     {
-      // Peek at the header of the packet; we don't want to remove the header in case we need to
-      // forward it elsewhere
-      LoonHeader destinationHeader;
-      packet->PeekHeader(destinationHeader);
-      Ipv4Address dest = Ipv4Address(destinationHeader.GetDest());
-      // Used for debugging, but not generally needed.
-      // NS_LOG(ns3::LOG_DEBUG, "header data " << dest);
+      Ipv4Address dest = getAddrFromPacket(packet);
 
       // Taken from balloons.cc; gets the address of the current socket
       Ptr<Node> node = socket->GetNode();
@@ -162,6 +179,10 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
       } else {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
+        Ptr<Packet> packet2 = getNextHopPacket(packet, node, dest);
+        NS_LOG(ns3::LOG_DEBUG, "blargh " << packet->GetSize() << " " << sources[node->GetId()]->GetNode()->GetId());
+        // line that makes things break
+        // sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(getAddrFromPacket(packet2), otherPort));
       }
     }
 }
@@ -506,7 +527,6 @@ int main (int argc, char *argv[])
   // create the array of Balloons
   // Create Receivers and senders
   std::vector<Ptr<Socket>> heartbeatSources;
-  std::vector<Ptr<Socket>> sources;
   balloons = (Balloon**)calloc(numBalloons, sizeof(Balloon*));
   for (unsigned int i = 0; i < numBalloons; ++i)
   {

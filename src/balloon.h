@@ -130,6 +130,14 @@ class Balloon
         //  bool: true if we find the neighbor, false if not
         bool GetNeighbor(const uint32_t& node_id, struct Neighbor* neighbor);
 
+        // HasNeighbor
+        // Search for existance of a neighbor given an Ipv4Address
+        // Args
+        //  [IN] addr: Ipv4Address of the destination of a packet
+        // Return
+        //  bool: true if we find the neighbor, false if not
+        bool HasNeighbor(ns3::Ipv4Address addr);
+
         // CreateHeartBeat
         // Creates a heartbeat message to be sent
         // includes updating etx and neighbor fields for now, though this may be too much on every interval 
