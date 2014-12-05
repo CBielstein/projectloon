@@ -180,9 +180,10 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
       } else {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
         Ptr<Packet> packet2 = getNextHopPacket(packet, node, dest);
+	packet2->RemoveAllPacketTags();
         NS_LOG(ns3::LOG_DEBUG, "blargh " << packet->GetSize() << " " << sources[node->GetId()]->GetNode()->GetId());
         // line that makes things break
-        // sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(getAddrFromPacket(packet2), otherPort));
+        sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(getAddrFromPacket(packet2), otherPort));
       }
     }
 }
