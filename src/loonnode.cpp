@@ -74,16 +74,21 @@ namespace Loon
         }
         else
         {
-            // If it does, update
-            entry->second.ip_addr = hb.sender_ip;
-            entry->second.is_gateway = hb.is_gateway;
-            entry->second.has_connection = hb.has_connection;
-            entry->second.etx_gw = hb.etx_gw;
-            entry->second.gw_next_node = hb.gw_next_node;
-            entry->second.position = hb.position;
-            entry->second.updated = hb.timestamp;
+            // If it does, update if it's newer than our previous update
+            if (entry->second.updated < hb.timestamp)
+            {
+                entry->second.ip_addr = hb.sender_ip;
+                entry->second.is_gateway = hb.is_gateway;
+                entry->second.has_connection = hb.has_connection;
+                entry->second.etx_gw = hb.etx_gw;
+                entry->second.gw_next_node = hb.gw_next_node;
+                entry->second.forward_delivery_ratio = GetForwardDeliveryRatio(hb);
+                entry->second.position = hb.position;
+                entry->second.updated = hb.timestamp;
+            }
+
+            // but always add the timestamp
             entry->second.heartbeats.emplace(hb.timestamp);
-            entry->second.forward_delivery_ratio = GetForwardDeliveryRatio(hb);
         }
 
         return true;
