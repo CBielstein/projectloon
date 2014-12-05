@@ -1,19 +1,21 @@
 #ifndef GATEWAY_H
 #define GATEWAY_H
 
-#include "balloon.h"
+#include "loonnode.h"
 
-// TODO if there's enough time before the project deadline, fix the inheritance model to
-// extend some base class instead of Balloon
-// Class that extends balloon to override a few functions necessary for creating a gateway
-class Gateway : public Balloon
+// Represents gateways in the network
+namespace Loon
 {
-    public:
-        Gateway() : Balloon() { connected = false; }
-        Gateway(ns3::Ptr<ns3::Node> _node) : Balloon(_node) { connected = false; }
+    class Gateway : public LoonNode
+    {
+        public:
+            Gateway() : LoonNode() { connected = true; }
+            Gateway(ns3::Ptr<ns3::Node> _node) : LoonNode(_node) { connected = true; }
+            bool IsGateway() override { return true; }
 
-    private:
-        bool IsGateway() { return true; }
-};
+            // Gateways don't move, so disable setting velocity.
+            bool SetVelocity(const ns3::Vector3D& velocity) { return false; }
+    };
+}
 
 #endif

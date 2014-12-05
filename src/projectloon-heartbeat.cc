@@ -24,7 +24,6 @@
 #include "ns3/config-store-module.h"
 #include "ns3/wifi-module.h"
 #include "ns3/internet-module.h"
-#include "ns3/lte-module.h"
 
 // C/C++ includes
 #include <iostream>
@@ -34,6 +33,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
+#include <cassert>
 
 // Our includes
 #include "IPtoGPS.h"
@@ -45,18 +45,23 @@
 NS_LOG_COMPONENT_DEFINE ("LoonHeartbeat");
 
 using namespace ns3;
+using namespace Loon;
 
-// Define globals
+// ** Define globals **
 
-
+// Holds map for GPSR data
 IPtoGPS map;
-NetDeviceContainer ueDevs;
-NetDeviceContainer enbDevs;
-Ptr<LteHelper> lteHelper;
-Balloon** balloons;
-unsigned int numBalloons; 
+// Holds all nodes
+LoonNode** loonnodes;
+// Number of balloons in the simulation
+unsigned int numBalloons;
+// Number of gateways in the simulation
+unsigned int numGateways;
+// Total number of LoonNodes in the simulation (numBalloons+numGateways)
+unsigned int numLoonNodes;
 uint16_t otherPort = 88;
 std::vector<Ptr<Socket>> sources;
+
 
 // ** Define helper functions **
 
@@ -79,7 +84,7 @@ double Jitter(double input)
 }
 
 // Function to handle receiving a heartbeat message
-static void ReceiveHeartBeat(const struct HeartBeat& hb, Balloon& balloon)
+static void ReceiveHeartBeat(const struct HeartBeat& hb, LoonNode& balloon)
 {
     if (!balloon.AddHeartBeat(hb.SenderId, hb))
     {
@@ -97,12 +102,12 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
 
     // find the matching balloon object to the socket
     uint32_t node_id = socket->GetNode()->GetId();
-    Balloon* balloon = NULL;
-    for (unsigned int i = 0; i < numBalloons; ++i)
+    LoonNode* balloon = NULL;
+    for (unsigned int i = 0; i < numLoonNodes; ++i)
     {
-        if (node_id == balloons[i]->GetId())
+        if (node_id == loonnodes[i]->GetId())
         {
-            balloon = balloons[i];
+            balloon = loonnodes[i];
             break;
         }
     } 
@@ -142,7 +147,7 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
 }
 
 static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address dest) {
-  bool hasNeighbor = balloons[currentNode->GetId()]->HasNeighbor(dest);
+  bool hasNeighbor = loonnodes[currentNode->GetId()]->HasNeighbor(dest);
   NS_LOG(ns3::LOG_DEBUG, "Has neighbor or not " << hasNeighbor);
   if (hasNeighbor) {
     return packet;
@@ -169,7 +174,7 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
     {
       Ipv4Address dest = getAddrFromPacket(packet);
 
-      // Taken from balloons.cc; gets the address of the current socket
+      // Taken from loonnodes.cc; gets the address of the current socket
       Ptr<Node> node = socket->GetNode();
       Ptr<Ipv4> ipv4 = node->GetObject<ns3::Ipv4>();
       Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1,0);
@@ -251,7 +256,7 @@ static void GenerateTrafficMultiHop (Ptr<Socket> socket, uint32_t pktSize,
 }
 
 // Send a regular heartbeat message
-static void SendHeartBeat(Ptr<Socket> socket, Balloon* balloon, Time hbInterval)
+static void SendHeartBeat(Ptr<Socket> socket, LoonNode* balloon, Time hbInterval)
 {
     if (balloon == NULL)
     {
@@ -279,6 +284,11 @@ static Vector3D Normalize(const Vector3D& v, double scale)
     // calculate length
     double length = CalculateDistance(Vector3D(0.0, 0.0, 0.0), ret_val);
 
+    if (length == 0)
+    {
+        return Vector3D(0.0, 0.0, 0.0);
+    }
+
     // normalize
     ret_val.x /= length;
     ret_val.y /= length;
@@ -292,77 +302,110 @@ static Vector3D Normalize(const Vector3D& v, double scale)
     return ret_val;
 }
 
-// Takes the nodecontainers for the balloons and the gateways (on the ground) and finds the correct movement for each balloon
-static void UpdateBalloonPositions(const NodeContainer& gateways)
+struct BalloonMobility
+{
+    enum
+    {
+        SEEK_CONNECTION = 1,
+        MAXIMUM_COVERAGE = 2,
+        POINT_TO_POINT = 3
+    };
+};
+
+// Takes the nodecontainers for the loonnodes and the gateways (on the ground) and finds the correct movement for each balloon
+static void UpdateBalloonPositions(const unsigned int MobilityType)
 {
     // ensure we aren't passed empty containers
-    if (numBalloons  < 1 || gateways.GetN() < 1)
+    if (numBalloons  < 1 || numGateways < 1)
     {
-        NS_LOG(ns3::LOG_ERROR, "Entered UpdateBalloonPositions with length: " << numBalloons << " and gateways size: " << gateways.GetN());
+        NS_LOG(ns3::LOG_ERROR, "Entered UpdateBalloonPositions with length: " << numBalloons << " and gateways size: " << numGateways);
+        return;
+    }
+
+    if ( !(MobilityType == BalloonMobility::SEEK_CONNECTION
+           || MobilityType == BalloonMobility::MAXIMUM_COVERAGE
+           || BalloonMobility::POINT_TO_POINT))
+    {
+        NS_LOG(ns3::LOG_ERROR, "UpdateBalloonPosition() was passed bad MobilityType " << MobilityType);
         return;
     }
 
     // for each balloon, find closest gateway and move toward it at speed
-    for (unsigned int i = 0; i < numBalloons; ++i)
+    for (unsigned int i = 0; i < numLoonNodes; ++i)
     {
-        Ptr<ConstantVelocityMobilityModel> balloon_mobility = balloons[i]->GetNode()->GetObject<ConstantVelocityMobilityModel>();
-        Vector3D balloon_position = balloon_mobility->GetPosition();
+        // gateways don't move!
+        if (loonnodes[i]->IsGateway())
+        {
+            continue;
+        }
 
         // update position
-        if(!map.UpdateMapping(balloons[i]->GetIpv4Addr(), balloon_position))
+        if(!map.UpdateMapping(loonnodes[i]->GetIpv4Addr(), loonnodes[i]->GetPosition()))
         {
-            NS_LOG(ns3::LOG_WARN, "Failed to update position for IP address " << balloons[i]->GetIpv4Addr());
+            NS_LOG(ns3::LOG_WARN, "Failed to update position for IP address " << loonnodes[i]->GetIpv4Addr());
         }
 
-        NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << " balloon " << balloons[i]->GetId()
-                        << ": Position: " << balloon_position 
-                        << "   Speed:" << balloon_mobility->GetVelocity());
+        NS_LOG(ns3::LOG_DEBUG, "At " << Simulator::Now().GetSeconds () << ", node: " << loonnodes[i]->GetId()
+                        << " @ Position: " << loonnodes[i]->GetPosition() << " w/  Speed:"
+                        << loonnodes[i]->GetVelocity());
 
-        Ptr<Node> nearest_node = gateways.Get(0);
-        Ptr<Node> temp_node = NULL;
-
-        double nearest_distance = CalculateDistance(balloon_mobility->GetPosition(), nearest_node->GetObject<MobilityModel>()->GetPosition());
-        double temp_distance;
-
-        for (unsigned int j = 1; j < gateways.GetN(); ++i)
+        if (MobilityType == BalloonMobility::SEEK_CONNECTION)
         {
-            temp_node = gateways.Get(j);
-            temp_distance = CalculateDistance(balloon_mobility->GetPosition(), temp_node->GetObject<MobilityModel>()->GetPosition());
-            if (temp_distance < nearest_distance)
+            // if we already have connection, stay put
+            if (loonnodes[i]->HasConnection())
             {
-                nearest_distance = temp_distance;
-                nearest_node = temp_node;
-                // Attach the gateway to the balloon
-                lteHelper->Attach (ueDevs.Get(i), enbDevs.Get(j));
-                enum EpsBearer::Qci q = EpsBearer::GBR_CONV_VOICE;
-                EpsBearer bearer (q);
-                lteHelper->ActivateDataRadioBearer (ueDevs, bearer);
+                loonnodes[i]->SetVelocity(Vector3D(0.0, 0.0, 0.0));
+                continue;
             }
-        }
 
-        // if in range, stop moving
-        if (nearest_distance <= LTE_SIGNAL_RADIUS)
-        {
-            balloon_mobility->SetVelocity(Vector3D(0.0, 0.0, 0.0));
-            //NS_LOG(ns3::LOG_DEBUG, "Moving with velocity (0.0, 0.0, 0.0)");
-        }
-        else //otherwise, correct course
-        {
+            // else, find the closest gateway and move toward it until we have connection
+            LoonNode* nearest_gateway = NULL;
+            double nearest_distance;
+            double compare_distance;
+
+            for (unsigned int j = 0; j < numLoonNodes; ++j)
+            {
+                // only compare to gateways that aren't us
+                if (j == i || !loonnodes[j]->IsGateway())
+                {
+                    continue;
+                }
+
+                compare_distance = CalculateDistance(loonnodes[i]->GetPosition(), loonnodes[j]->GetPosition());
+
+                // if this is closer, or if we don't already have a target gateway, pick this one
+                if (compare_distance < nearest_distance || nearest_gateway == NULL)
+                {
+                    nearest_distance = compare_distance;
+                    nearest_gateway = loonnodes[j];
+                }
+            }
+
+            if (nearest_gateway == NULL)
+            {
+                NS_LOG(ns3::LOG_ERROR, "UpdateBalloonPosition() difn't find a nearest gateway for topology type SEEK_CONNECTION");
+                return;
+            }
+
             // find normalized direction
-            Vector3D node_position = nearest_node->GetObject<MobilityModel>()->GetPosition();
-            Vector3D direction(node_position.x - balloon_position.x, node_position.y - balloon_position.y, node_position.z - balloon_position.z);
+            Vector3D gateway_position = nearest_gateway->GetPosition();
+            Vector3D balloon_position = loonnodes[i]->GetPosition();
+            Vector3D direction(gateway_position.x - balloon_position.x, gateway_position.y - balloon_position.y, gateway_position.z - balloon_position.z);
             direction.z = 0; // don't move up or down
             direction = Normalize(direction, BALLOON_TOP_SPEED);
 
             // move in that direction at top speed
-            balloon_mobility->SetVelocity(direction);
-
-            //NS_LOG(ns3::LOG_DEBUG, "Moving with velocity " << direction);
+            loonnodes[i]->SetVelocity(direction);
+        }
+        else
+        {
+            NS_LOG(ns3::LOG_ERROR, "Tried routing mode which is not yet implemented");
+            assert(0); // Not yet implemented.
         }
     }
-    
+
     // schedule this to happen again in BALLOON_POSITION_UPDATE_RATE seconds
-    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, gateways);
+    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, MobilityType);
 }
 
 // Creates a receiver!
@@ -400,8 +443,8 @@ int main (int argc, char *argv[])
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 30;
-  numBalloons = 3;
-  int numGateways = 1;
+  numBalloons = 2;
+  numGateways = 1;
   double interval = 1.0; // seconds
   bool verbose = false;
   uint16_t heartbeatPort = 80;
@@ -418,6 +461,8 @@ int main (int argc, char *argv[])
   cmd.AddValue("numGateways", "number of gateways", numGateways);
   cmd.Parse (argc, argv);
 
+  numLoonNodes = numBalloons + numGateways;
+
   // Convert to time object
   Time interPacketInterval = Seconds (interval);
   // disable fragmentation for frames below 2200 bytes
@@ -431,14 +476,8 @@ int main (int argc, char *argv[])
 
   // ** Start setting up the nodes for the simulation **
 
-  // note: in the LTE model, balloons are eNBs
-  NodeContainer balloonNodes;
-  balloonNodes.Create (numBalloons);
-
-  // gateways will hold our internet access points on the ground
-  // note: in the LTE model, gateways are UEs
-  NodeContainer gateways;
-  gateways.Create(numGateways);
+  NodeContainer loonNodesContainer;
+  loonNodesContainer.Create(numLoonNodes);
 
   // The below set of helpers will help us to put together the wifi NICs we want
   WifiHelper wifi;
@@ -470,52 +509,34 @@ int main (int argc, char *argv[])
                                 "ControlMode",StringValue (phyMode));
   // Set it to adhoc mode
   wifiMac.SetType ("ns3::AdhocWifiMac");
-  NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, balloonNodes);
+  NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, loonNodesContainer);
 
   // Set mobility model and initial positions
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
+  for (unsigned int i = 0; i < numGateways; ++i)
+  {
+    // TODO place gateways
+  }
   for (unsigned int i = 0; i < numBalloons; ++i)
   {
     // TODO create randomized (or fixed for tests?) balloon positions
   }
 
-  // for now, just set them fixed while we test so we know what they're doing
-  // Node 0 (sender) starts ON the gateway
-  positionAlloc->Add (Vector (0.0, 0.0, 20000.0));
+  // TODO remove: for now, just set them fixed while we test so we know what they're doing
+  // Node 0 (sender) IS the gateway
+  positionAlloc->Add (Vector (0.0, 0.0, 0.0));
   // Node 1 starts just out of range, moves into range after 2 packets have been sent
-  positionAlloc->Add (Vector (-40200.0, 0.0, 20000.0));
-  // Node 2 is also on the gateway
-  positionAlloc->Add (Vector (0.0, 0.0, 20000.0));
+  positionAlloc->Add (Vector (-30200.0, 0.0, 20000.0));
+  // Node 2 is on the gateway
+  positionAlloc->Add (Vector (-35200.0, 0.0, 20000.0));
 
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
-  mobility.Install (balloonNodes);
+  mobility.Install(loonNodesContainer);
 
-  // Set position of ground links
-  MobilityHelper gateway_mob;
-  Ptr<ListPositionAllocator> gateway_position_alloc = CreateObject<ListPositionAllocator>();
-  for (int i = 0; i < numGateways; ++i)
-  {
-    // TODO create randomized (or fixed for tests?) gateway positions
-  }
-
-  // for now, just set them fixed while we test so we know what they're doing
-  gateway_position_alloc->Add(Vector(0.0, 0.0, 0.0)); // right on the origin
-
-  gateway_mob.SetPositionAllocator(gateway_position_alloc);
-  gateway_mob.SetMobilityModel("ns3::ConstantPositionMobilityModel");
-  gateway_mob.Install(gateways);
-
-  // LTEHelper is needed for performing certain LTE operations
-  lteHelper = CreateObject<LteHelper> ();
-  // Install LTE protocol stack on the balloons
-  enbDevs = lteHelper->InstallEnbDevice (balloonNodes);
-  // Install LTE protocol stack on gateways
-  ueDevs = lteHelper->InstallUeDevice (gateways);
- 
   InternetStackHelper internet;
-  internet.Install (balloonNodes);
+  internet.Install (loonNodesContainer);
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
@@ -527,37 +548,40 @@ int main (int argc, char *argv[])
   // create the array of Balloons
   // Create Receivers and senders
   std::vector<Ptr<Socket>> heartbeatSources;
-  balloons = (Balloon**)calloc(numBalloons, sizeof(Balloon*));
-  for (unsigned int i = 0; i < numBalloons; ++i)
+  loonnodes = (LoonNode**)calloc(numLoonNodes, sizeof(LoonNode*));
+  for (unsigned int i = 0; i < numLoonNodes; ++i)
   {
     // Create sender sockets for heartbeat messages
-    heartbeatSources.push_back(createSender(balloonNodes.Get(i), heartbeatPort));
+    heartbeatSources.push_back(createSender(loonNodesContainer.Get(i), heartbeatPort));
     // Create sender sockets for other messages
-    sources.push_back(createSender(balloonNodes.Get(i), otherPort));
+    sources.push_back(createSender(loonNodesContainer.Get(i), otherPort));
     // Create reciever sockets for heartbeat messages
-    createReceiver(balloonNodes.Get(i), heartbeatPort);
+    createReceiver(loonNodesContainer.Get(i), heartbeatPort);
     // Create reciever sockets for other messages
-    createReceiver(balloonNodes.Get(i), otherPort);
-    // Add node to the balloons array
+    createReceiver(loonNodesContainer.Get(i), otherPort);
 
-    // TODO remove this testing hack
-    if (i == 0)
-        balloons[i] = new Gateway(balloonNodes.Get(i));
+    // Add node to the loonnodes array
+    if (i < numGateways)
+    {
+        loonnodes[i] = new Gateway(loonNodesContainer.Get(i));
+    }
     else
-        balloons[i] = new Balloon(balloonNodes.Get(i));
+    {
+        loonnodes[i] = new Balloon(loonNodesContainer.Get(i));
+    }
   }
 
 
   // ** Schedule events **
 
   // update position and do movement
-  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, gateways);
+  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, BalloonMobility::SEEK_CONNECTION);
 
   // activate heartbeats
-  for (unsigned int i = 0; i < numBalloons; ++i)
+  for (unsigned int i = 0; i < numLoonNodes; ++i)
   {
     // Schedule the event, with the jitter
-    Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, heartbeatSources[i], balloons[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
+    Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, heartbeatSources[i], loonnodes[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
   }
 
   // ** Generate broadcast traffic **
@@ -569,12 +593,12 @@ int main (int argc, char *argv[])
   // ** Generate traffic to specific node, in this case, node 1 **
   //Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
   //                                Seconds (1.0), &GenerateTrafficSpecific, 
-  //                                sources[0], packetSize, numPackets, interPacketInterval, balloons[1]->GetIpv4Addr());
+  //                                sources[0], packetSize, numPackets, interPacketInterval, loonnodes[1]->GetIpv4Addr());
 
   // ** Generate traffic with a final destination in mind. In this case, the final destination is node 1 **
   Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTrafficMultiHop, 
-                                  sources[0], packetSize, numPackets, interPacketInterval, balloons[1]->GetIpv4Addr());
+                                  sources[0], packetSize, numPackets, interPacketInterval, loonnodes[1]->GetIpv4Addr());
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
@@ -583,11 +607,11 @@ int main (int argc, char *argv[])
 
 
   // ** Clean up **
-  for (unsigned int i = 0; i < numBalloons; ++i)
+  for (unsigned int i = 0; i < numLoonNodes; ++i)
   {
-    free(balloons[i]);
+    delete loonnodes[i];
   }
-  free(balloons);
+  free(loonnodes);
 
   // yay we're done
   return 0;
