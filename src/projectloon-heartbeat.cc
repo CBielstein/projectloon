@@ -147,12 +147,21 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
 }
 
 static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address dest) {
+  LoonNode* current = loonnodes[currentNode->GetId()];
   bool hasNeighbor = loonnodes[currentNode->GetId()]->HasNeighbor(dest);
   NS_LOG(ns3::LOG_DEBUG, "Has neighbor or not " << hasNeighbor);
   if (hasNeighbor) {
     return packet;
   } else {
-    // This should be the next hop, as chosen by GPSR
+    // This should be the next hop, as chosen by GPSR/ETX
+    // Currently, this chooses next hop based on ETX
+    Ipv4Address nextHop = current->GetAddress(current->GetNextHopId());
+    LoonHeader header;
+    header.SetDest(nextHop.Get());
+    LoonHeader oldHeader;
+    packet->RemoveHeader(oldHeader);
+    packet->AddHeader(header);
+
     return packet;
   }
 }

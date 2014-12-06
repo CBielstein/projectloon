@@ -40,6 +40,11 @@ namespace Loon
         return etx_gw;
     }
 
+    uint32_t LoonNode::GetNextHopId() const
+    {
+        return gw_next_node;
+    }
+
     ns3::Ipv4Address LoonNode::GetIpv4Addr() const
     {
         // Taken from https://groups.google.com/forum/#!topic/ns-3-users/LKikAY2KnGQ
@@ -115,6 +120,21 @@ namespace Loon
             return true;
         }
     }
+
+    ns3::Ipv4Address LoonNode::GetAddress(uint32_t nodeId)
+    {
+        // Check if any entry for node_id exists
+        for (std::map<uint32_t, struct Neighbor>::iterator it = neighbors.begin(); it!=neighbors.end(); ++it)
+        {
+            Neighbor neighbor = it->second;
+            if (neighbor.gw_next_node == nodeId)
+            {
+                return neighbor.ip_addr;
+            }
+        }
+        return ns3::Ipv4Address::GetAny();
+    }
+
 
     bool LoonNode::HasNeighbor(ns3::Ipv4Address addr)
     {

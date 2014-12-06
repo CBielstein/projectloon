@@ -64,7 +64,7 @@ namespace Loon
         // The lowest etx to a gateway advertised by the neighboring node
         uint32_t etx_gw;
 
-        // Next hop on the path (used to eliminate count to infinity problems)
+        // Id ofthe next hop on the path (used to eliminate count to infinity problems)
         uint32_t gw_next_node;
 
         // Delivery ratio from this neighbor
@@ -112,6 +112,10 @@ namespace Loon
             // GetEtx
             // Returns the lowest ETX to a gateway
             uint32_t GetEtx() const;
+
+            // GetNextHopId
+            // Returns the id of the next hop (based on lowest ETX)
+            uint32_t GetNextHopId() const;
 
             // GetIpv4Addr
             // Returns the address of the Ipv4 interface on the node
@@ -161,6 +165,16 @@ namespace Loon
             //  true if the node has connection
             bool HasConnection() const;
 
+            // GetAddress
+            // returns the Ipv4Address of a given node id. If the provided node id doesn't correspond
+            // to one of the node's neighbors, it will return Ipv4Address::GetAny().
+            // Args
+            //   [IN] nodeId: Node id to look up
+            // Return
+            //  Ipv4Address of the provided node id.
+            ns3::Ipv4Address GetAddress(uint32_t nodeId);
+
+
             // GetVelocity
             // returns the current velocity of the underlying node
             // This assumes we're using a ConstantVelocityMobilityModel
@@ -198,7 +212,7 @@ namespace Loon
             // the lowest ETX from this balloon to a gateway
             uint32_t etx_gw;
 
-            // The next node to hop to for the gateway
+            // The id of the node with lowest ETX from this balloon to for the gateway
             uint32_t gw_next_node;
 
             // Map to information about my neighbors
