@@ -175,7 +175,33 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
     // if we have the IP addr, it's one of our balloons or clients and we should avoid the gateway overhead and use GPSR
     // else it's not on our network, so we're going to use the ETX route back to the gateway to send it to the internet
     if (map.GetMapping(dest_addr, dest_location)) {
-        nextHop = current->GetNearestNeighborToDest(dest_location);
+	LoonHeader destinationHeader;
+	packet->PeekHeader(destinationHeader);
+	Vector3D current_location = current->GetPosition();
+	if(destinationHeader.IsRoutingModeGreedy()){	
+            nextHop = current->GetNearestNeighborToDest(dest_location);
+	    Ipv4Address currentAddr = current->GetIpv4Addr();
+	    // If the nearest neighbor was the current node itself, greedy forwarding failed and we need to switch to perimeter routing.
+	    if(nextHop.IsEqual(currentAddr)){
+		destinationHeader.SetRoutingModeGreedy(false);
+		double distance = CalculateDistance(current_location, dest_location);
+		destinationHeader.SetStartPerimeterRoutingDistance(distance);
+	    	current->GetNextPerimeterNode(dest_location);
+	    }
+	}
+	else{
+	    // First, check if the current node is closer than the start perimeter routing position.
+	    // If it is, we can switch back to greedy.  Otherwise continue perimeter routing.
+	    double startPerimeterRoutingDistance = destinationHeader.GetStartPerimeterRoutingDistance();
+	    double currentDistance = CalculateDistance(current_location, dest_location);
+            if(currentDistance < startPerimeterRoutingDistance){
+	    	destinationHeader.SetRoutingModeGreedy(true);
+		current->GetNearestNeighborToDest(dest_location);
+	    }
+	    else{
+	        current->GetNextPerimeterNode(dest_location);
+	    }
+	}
     } else {
         nextHop = current->GetAddress(current->GetNextHopId());
     }

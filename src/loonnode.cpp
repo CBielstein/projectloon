@@ -168,12 +168,13 @@ namespace Loon
 	    }
         }
 
-        if(nearestNeighbor.IsEqual(this->GetIpv4Addr()))
-        {
-            // do perimeter routing
-        }
-
         return nearestNeighbor;
+    }
+
+    ns3::Ipv4Address LoonNode::GetNextPerimeterNode(ns3::Vector3D destinationPosition)
+    {
+	// This will start perimeter routing.  For now, just returning this until perimeter routing works....
+	return this->GetIpv4Addr();
     }
 
     struct HeartBeat LoonNode::CreateHeartBeat()
@@ -276,4 +277,6 @@ namespace Loon
         node->GetObject<ns3::ConstantVelocityMobilityModel>()->SetVelocity(velocity);
         return true;
     }
+
+    
 }

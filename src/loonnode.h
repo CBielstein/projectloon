@@ -152,8 +152,16 @@ namespace Loon
             // Args
 	    //   [IN] destinationPosition: Vector containing position of destination
 	    // Return
-	    //   Ipv4Address: the address of the node that isnearest to the destination node
+	    //   Ipv4Address: the address of the node that is nearest to the destination node
             ns3::Ipv4Address GetNearestNeighborToDest(ns3::Vector3D destinationPosition);
+
+	    // GetNextPerimeterNode
+	    // Determine the next node to send to for perimeter routing
+	    // Args
+	    // [IN] destinationPosition: Vector containing position of destination
+	    // Return
+	    //	  Ipv4Address: the address of the next node to route to
+	    ns3::Ipv4Address GetNextPerimeterNode(ns3::Vector3D destionationPosition);
 
             // CreateHeartBeat
             // Creates a heartbeat message to be sent

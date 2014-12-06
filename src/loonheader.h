@@ -24,6 +24,12 @@ public:
   virtual void Serialize (Buffer::Iterator start) const;
   virtual uint32_t Deserialize (Buffer::Iterator start);
   virtual uint32_t GetSerializedSize (void) const;
+  virtual bool IsRoutingModeGreedy (void) const;
+  virtual void SetRoutingModeGreedy (bool m);
+  virtual void SetStartPerimeterRoutingDistance(double distance);
+  virtual double GetStartPerimeterRoutingDistance (void) const;
 private:
   uint32_t dest;
+  double startPerimeterRoutingDistance;
+  bool greedy = true;
 };

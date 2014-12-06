@@ -73,3 +73,25 @@ LoonHeader::GetDest (void) const
 {
   return dest;
 }
+bool
+LoonHeader::IsRoutingModeGreedy (void) const
+{
+  return greedy;
+}
+void
+LoonHeader::SetRoutingModeGreedy (bool m)
+{
+  greedy = m;
+}
+
+void 
+LoonHeader::SetStartPerimeterRoutingDistance (double dist)
+{
+  startPerimeterRoutingDistance = dist;
+}
+
+double
+LoonHeader::GetStartPerimeterRoutingDistance (void) const
+{
+  return startPerimeterRoutingDistance;
+}
