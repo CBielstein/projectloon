@@ -41,8 +41,8 @@ LoonHeader::Print (std::ostream &os) const
 uint32_t
 LoonHeader::GetSerializedSize (void) const
 {
-  // we reserve 4 bytes for our header.
-  return 4;
+  // we reserve 18 bytes for our header.
+  return 18;
 }
 void
 LoonHeader::Serialize (Buffer::Iterator start) const
@@ -50,6 +50,9 @@ LoonHeader::Serialize (Buffer::Iterator start) const
   // we can serialize four bytes at the start of the buffer.
   // we write them in network byte order.
   start.WriteHtonU32 (dest);
+  start.WriteHtonU32 (finalDest);
+  start.WriteHtonU64 (startPerimeterRoutingDistance);
+  start.WriteHtonU16 (greedy);
 }
 uint32_t
 LoonHeader::Deserialize (Buffer::Iterator start)
@@ -58,9 +61,13 @@ LoonHeader::Deserialize (Buffer::Iterator start)
   // we read them in network byte order and store them
   // in host byte order.
   dest = start.ReadNtohU32 ();
+  finalDest = start.ReadNtohU32 ();
+  startPerimeterRoutingDistance = start.ReadNtohU64 ();
+  greedy = start.ReadNtohU16 ();
+
 
   // we return the number of bytes effectively read.
-  return 4;
+  return 18;
 }
 
 void 
@@ -94,4 +101,15 @@ double
 LoonHeader::GetStartPerimeterRoutingDistance (void) const
 {
   return startPerimeterRoutingDistance;
+}
+void 
+LoonHeader::SetFinalDest (uint32_t data)
+{
+  finalDest = data;
+}
+
+uint32_t 
+LoonHeader::GetFinalDest (void) const
+{
+  return finalDest;
 }

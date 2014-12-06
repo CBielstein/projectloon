@@ -137,32 +137,44 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
         }
         else
         {
-            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId()
+/*            NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId()
+
                    << " From: " << msg->SenderId << std::endl << "    IsGateway: " << msg->is_gateway << ", HasConnection: "
                    << msg->has_connection << ", etx_gw: " << msg->etx_gw << std::endl << "    next hop: " << msg->gw_next_node
                    << ", Position: " << msg->position << ", Sender IP: " << msg->sender_ip << std::endl << "    Time: "
                    << msg->timestamp << ", #Ratios: " << msg->delivery_ratios->size());
-
+*/
             ReceiveHeartBeat(*msg, *balloon);
         }
     }
     free(msg);
 }
 
-Ipv4Address getAddrFromPacket(Ptr<Packet> packet) {
+// Returns the Ipv4Address of the final destination of the packet.
+Ipv4Address GetFinalDestOfPacket(Ptr<Packet> packet) {
+  LoonHeader destinationHeader;
+  packet->PeekHeader(destinationHeader);
+  Ipv4Address dest = Ipv4Address(destinationHeader.GetFinalDest());
+  // Used for debugging, but not generally needed.
+  // NS_LOG(ns3::LOG_DEBUG, "final destination " << dest << " " << destinationHeader.GetFinalDest());
+  return dest;
+}
+
+// Returns the dest field of the packet, which is the next destination that this packet should be forwarded.
+Ipv4Address GetNextDestOfPacket(Ptr<Packet> packet) {
   // Peek at the header of the packet; we don't want to remove the header in case we need to
   // forward it elsewhere
   LoonHeader destinationHeader;
   packet->PeekHeader(destinationHeader);
   Ipv4Address dest = Ipv4Address(destinationHeader.GetDest());
   // Used for debugging, but not generally needed.
-  // NS_LOG(ns3::LOG_DEBUG, "header data " << dest);
+  //NS_LOG(ns3::LOG_DEBUG, "Next Dest " << dest);
   return dest;
 }
 
-static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address dest) {
+static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address finalDest) {
   LoonNode* current = loonnodes[currentNode->GetId()];
-  bool hasNeighbor = current->HasNeighbor(dest);
+  bool hasNeighbor = current->HasNeighbor(finalDest);
   if (hasNeighbor) {
     NS_LOG(ns3::LOG_DEBUG, "Has neighbor");
     return packet;
@@ -171,13 +183,13 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
     NS_LOG(ns3::LOG_DEBUG, "Does not have neighbor");
 
     // get the IP from the packet
-    Ipv4Address dest_addr = getAddrFromPacket(packet);
     Ipv4Address nextHop;
     Vector3D dest_location;
 
+    // ** Commented out for now **
     // if we have the IP addr, it's one of our balloons or clients and we should avoid the gateway overhead and use GPSR
     // else it's not on our network, so we're going to use the ETX route back to the gateway to send it to the internet
-    if (map.GetMapping(dest_addr, dest_location)) {
+/*    if (map.GetMapping(finalDest, dest_location)) {
 	LoonHeader destinationHeader;
 	packet->PeekHeader(destinationHeader);
 	Vector3D current_location = current->GetPosition();
@@ -205,12 +217,13 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
 	        current->GetNextPerimeterNode(dest_location);
 	    }
 	}
-    } else {
+    } else {*/
         nextHop = current->GetAddress(current->GetNextHopId());
-    }
+//    }
 
     LoonHeader header;
     header.SetDest(nextHop.Get());
+    header.SetFinalDest(finalDest.Get());
     LoonHeader oldHeader;
     packet->RemoveHeader(oldHeader);
     packet->AddHeader(header);
@@ -222,7 +235,7 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
 {
     while (Ptr<Packet> packet = socket->Recv())
     {
-      Ipv4Address dest = getAddrFromPacket(packet);
+      Ipv4Address finalDest = GetFinalDestOfPacket(packet);
 
       // Taken from loonnodes.cc; gets the address of the current socket
       Ptr<Node> node = socket->GetNode();
@@ -230,14 +243,16 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
       Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1,0);
       Ipv4Address addr = iaddr.GetLocal();
 
-      if (dest == addr) {
+      NS_LOG(ns3::LOG_DEBUG, "current address " << addr << " intended for " << finalDest);
+
+      if (finalDest == addr) {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
         packetsReceivedPerLoon[node->GetId()]++;
       } else {
-        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId() << " intended for " << addr);
-        Ptr<Packet> packet2 = getNextHopPacket(packet, node, dest);
+        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId() << " intended for " << finalDest);
+        Ptr<Packet> packet2 = getNextHopPacket(packet, node, finalDest);
 	packet2->RemoveAllPacketTags();
-        sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(getAddrFromPacket(packet2), otherPort));
+        sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(GetNextDestOfPacket(packet2), otherPort));
 	packetsForwarded[node->GetId()]++;
       }
     }
@@ -291,6 +306,7 @@ static void GenerateTrafficMultiHop (Ptr<Socket> socket, uint32_t pktSize,
       Ptr<Packet> packet = Create<Packet>(pktSize);
       LoonHeader header;
       header.SetDest(address.Get());
+      header.SetFinalDest(address.Get());
       packet->AddHeader(header);
 
       // not really sure what the flag is.... so I chose 16 lol
@@ -718,12 +734,11 @@ int main (int argc, char *argv[])
   //                                Seconds (1.0), &GenerateTrafficSpecific, 
   //                                sources[0], packetSize, numPackets, interPacketInterval, loonnodes[1]->GetIpv4Addr());
 
-  // ** Generate traffic with a final destination in mind. In this case, the final destination is node 1 **
-  // In our existing routing protocol using ETX, loonnodes[1] is in range of sources[0]. loonnodes[2] requires forwarding,
-  // so we have set it here to illustrate the forwarding.
-  Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
+  // ** Generate traffic with a final destination in mind. In this case, the final destination is node 0, which is the gateway **
+  // Node 0 is a gateway, nodes 1 and 2 are balloons. Nodes 0 and 2 are 2 hops away from each other, with node 1 in the middle.
+  Simulator::ScheduleWithContext (sources[2]->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTrafficMultiHop, 
-                                  sources[0], packetSize, numPackets, interPacketInterval, loonnodes[2]->GetIpv4Addr());
+                                  sources[2], packetSize, numPackets, interPacketInterval, loonnodes[0]->GetIpv4Addr());
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
@@ -737,7 +752,7 @@ int main (int argc, char *argv[])
            << "forwarded " << packetsForwarded[i] << " packets, and received " 
            << packetsReceivedPerLoon[i] << " as the final destination");
   }
-  NS_LOG(ns3::LOG_DEBUG, "--Individual metrics--");
+/*  NS_LOG(ns3::LOG_DEBUG, "--Individual metrics--");
   NS_LOG(ns3::LOG_DEBUG, "Packets received at final destination: ");
   for (std::vector<uint16_t>::size_type i = 0; i != packetsReceivedPerLoon.size(); ++i) {
     NS_LOG(ns3::LOG_DEBUG, packetsReceivedPerLoon[i] << " packets received by node " << i
@@ -752,7 +767,7 @@ int main (int argc, char *argv[])
   NS_LOG(ns3::LOG_DEBUG, "Number of packets sent: ");
   for (std::vector<uint16_t>::size_type i = 0; i != packetsSent.size(); ++i) {
     NS_LOG(ns3::LOG_DEBUG, "node " << i << " sent " << packetsSent[i] << " packets");
-  }
+  }*/
 
 
   // Don't destroy the simulator too early

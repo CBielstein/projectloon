@@ -18,6 +18,9 @@ public:
   void SetDest (uint32_t data);
   uint32_t GetDest (void) const;
 
+  void SetFinalDest (uint32_t data);
+  uint32_t GetFinalDest (void) const;
+
   static TypeId GetTypeId (void);
   virtual TypeId GetInstanceTypeId (void) const;
   virtual void Print (std::ostream &os) const;
@@ -32,4 +35,5 @@ private:
   uint32_t dest;
   double startPerimeterRoutingDistance;
   bool greedy = true;
+  uint32_t finalDest;
 };
