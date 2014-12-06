@@ -61,6 +61,9 @@ unsigned int numGateways;
 unsigned int numLoonNodes;
 uint16_t otherPort = 88;
 std::vector<Ptr<Socket>> sources;
+std::vector<uint16_t> packetsReceivedPerLoon;
+std::vector<uint16_t> packetsForwarded;
+std::vector<uint16_t> packetsSent;
 
 
 // ** Define helper functions **
@@ -229,11 +232,13 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
 
       if (dest == addr) {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
+        packetsReceivedPerLoon[node->GetId()]++;
       } else {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId() << " intended for " << addr);
         Ptr<Packet> packet2 = getNextHopPacket(packet, node, dest);
 	packet2->RemoveAllPacketTags();
         sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(getAddrFromPacket(packet2), otherPort));
+	packetsForwarded[node->GetId()]++;
       }
     }
 }
@@ -247,6 +252,7 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
       Simulator::Schedule (pktInterval, &GenerateTraffic,
                            socket, pktSize,pktCount-1, pktInterval);
       NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left");
+      packetsSent[socket->GetNode()->GetId()]++;
     }
   else
     {
@@ -263,11 +269,12 @@ static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
       // not really sure what the flag is.... so I chose 16 lol
       int test = socket->SendTo (Create<Packet> (pktSize), 16, InetSocketAddress (address, 88));
       if (test == -1) {
-        NS_LOG(ns3::LOG_DEBUG, "rawr");
+        NS_LOG(ns3::LOG_DEBUG, "SendTo failed");
       }
       Simulator::Schedule (pktInterval, &GenerateTrafficSpecific,
                            socket, pktSize,pktCount-1, pktInterval, address);
       NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left to send to address "<< address);
+      packetsSent[socket->GetNode()->GetId()]++;
     }
   else
     {
@@ -289,11 +296,12 @@ static void GenerateTrafficMultiHop (Ptr<Socket> socket, uint32_t pktSize,
       // not really sure what the flag is.... so I chose 16 lol
       int test = socket->Send(packet);
       if (test == -1) {
-        NS_LOG(ns3::LOG_DEBUG, "rawr");
+        NS_LOG(ns3::LOG_DEBUG, "Send in GenerateTrafficMultiHop failed");
       }
       Simulator::Schedule (pktInterval, &GenerateTrafficMultiHop,
                            socket, pktSize,pktCount-1, pktInterval, address);
       NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left "<< address);
+      packetsSent[socket->GetNode()->GetId()]++;
     }
   else
     {
@@ -507,6 +515,10 @@ int main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   numLoonNodes = numBalloons + numGateways;
+  
+  packetsReceivedPerLoon = std::vector<uint16_t>(numLoonNodes, 0);
+  packetsForwarded = std::vector<uint16_t>(numLoonNodes, 0);
+  packetsSent = std::vector<uint16_t>(numLoonNodes, 0);
 
   // Convert to time object
   Time interPacketInterval = Seconds (interval);
@@ -594,6 +606,7 @@ int main (int argc, char *argv[])
   // Create Receivers and senders
   std::vector<Ptr<Socket>> heartbeatSources;
   loonnodes = (LoonNode**)calloc(numLoonNodes, sizeof(LoonNode*));
+  int status = EXIT_SUCCESS;
   for (unsigned int i = 0; i < numLoonNodes; ++i)
   {
     // Create sender sockets for heartbeat messages
@@ -615,7 +628,11 @@ int main (int argc, char *argv[])
         loonnodes[i] = new Balloon(loonNodesContainer.Get(i));
     }
 
-    map.AddMapping(loonnodes[i]->GetIpv4Addr(), loonnodes[i]->GetPosition());
+    status = map.AddMapping(loonnodes[i]->GetIpv4Addr(), loonnodes[i]->GetPosition());
+    if (status != EXIT_SUCCESS)
+    {
+        NS_LOG(ns3::LOG_ERROR, "map.AddMapping(" << loonnodes[i]->GetIpv4Addr() << ", " << loonnodes[i]->GetPosition() << " returned " << status);
+    }
   }
 
 
@@ -652,8 +669,35 @@ int main (int argc, char *argv[])
 
   Simulator::Stop(Seconds(10));
   Simulator::Run ();
-  Simulator::Destroy ();
 
+  NS_LOG(ns3::LOG_DEBUG, "--End Simulation--");
+  NS_LOG(ns3::LOG_DEBUG, "Overall Summary");
+  for (std::vector<uint16_t>::size_type i = 0; i != packetsReceivedPerLoon.size(); ++i) {
+    NS_LOG(ns3::LOG_DEBUG, "node " << i << " at address " << loonnodes[i]->GetIpv4Addr()
+           << " sent " << packetsSent[i] << " packets, "
+           << "forwarded " << packetsForwarded[i] << " packets, and received " 
+           << packetsReceivedPerLoon[i] << " as the final destination");
+  }
+  NS_LOG(ns3::LOG_DEBUG, "--Individual metrics--");
+  NS_LOG(ns3::LOG_DEBUG, "Packets received at final destination: ");
+  for (std::vector<uint16_t>::size_type i = 0; i != packetsReceivedPerLoon.size(); ++i) {
+    NS_LOG(ns3::LOG_DEBUG, packetsReceivedPerLoon[i] << " packets received by node " << i
+           << " with address " << loonnodes[i]->GetIpv4Addr());
+  }
+  NS_LOG(ns3::LOG_DEBUG, "--");
+  NS_LOG(ns3::LOG_DEBUG, "Number of packets forwarded: ");
+  for (std::vector<uint16_t>::size_type i = 0; i != packetsForwarded.size(); ++i) {
+    NS_LOG(ns3::LOG_DEBUG, "node " << i << " forwarded " << packetsForwarded[i] << " packets");
+  }
+  NS_LOG(ns3::LOG_DEBUG, "--");
+  NS_LOG(ns3::LOG_DEBUG, "Number of packets sent: ");
+  for (std::vector<uint16_t>::size_type i = 0; i != packetsSent.size(); ++i) {
+    NS_LOG(ns3::LOG_DEBUG, "node " << i << " sent " << packetsSent[i] << " packets");
+  }
+
+
+  // Don't destroy the simulator too early
+  Simulator::Destroy ();
 
   // ** Clean up **
   for (unsigned int i = 0; i < numLoonNodes; ++i)
