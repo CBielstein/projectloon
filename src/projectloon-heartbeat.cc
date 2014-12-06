@@ -149,10 +149,11 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
 static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address dest) {
   LoonNode* current = loonnodes[currentNode->GetId()];
   bool hasNeighbor = loonnodes[currentNode->GetId()]->HasNeighbor(dest);
-  NS_LOG(ns3::LOG_DEBUG, "Has neighbor or not " << hasNeighbor);
   if (hasNeighbor) {
+    NS_LOG(ns3::LOG_DEBUG, "Has neighbor");
     return packet;
   } else {
+    NS_LOG(ns3::LOG_DEBUG, "Does not have neighbor");
     // This should be the next hop, as chosen by GPSR/ETX
     // Currently, this chooses next hop based on ETX
     Ipv4Address nextHop = current->GetAddress(current->GetNextHopId());
@@ -192,10 +193,9 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
       if (dest == addr) {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
       } else {
-        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId());
+        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId() << " intended for " << addr);
         Ptr<Packet> packet2 = getNextHopPacket(packet, node, dest);
 	packet2->RemoveAllPacketTags();
-        NS_LOG(ns3::LOG_DEBUG, "blargh " << packet->GetSize() << " " << sources[node->GetId()]->GetNode()->GetId());
         // line that makes things break
         sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(getAddrFromPacket(packet2), otherPort));
       }
@@ -606,9 +606,11 @@ int main (int argc, char *argv[])
   //                                sources[0], packetSize, numPackets, interPacketInterval, loonnodes[1]->GetIpv4Addr());
 
   // ** Generate traffic with a final destination in mind. In this case, the final destination is node 1 **
+  // In our existing routing protocol using ETX, loonnodes[1] is in range of sources[0]. loonnodes[2] requires forwarding,
+  // so we have set it here to illustrate the forwarding.
   Simulator::ScheduleWithContext (sources[0]->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTrafficMultiHop, 
-                                  sources[0], packetSize, numPackets, interPacketInterval, loonnodes[1]->GetIpv4Addr());
+                                  sources[0], packetSize, numPackets, interPacketInterval, loonnodes[2]->GetIpv4Addr());
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
