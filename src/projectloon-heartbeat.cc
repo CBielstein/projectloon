@@ -146,46 +146,6 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
     free(msg);
 }
 
-static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address dest) {
-  LoonNode* current = loonnodes[currentNode->GetId()];
-  bool hasNeighbor = loonnodes[currentNode->GetId()]->HasNeighbor(dest);
-  if (hasNeighbor) {
-    NS_LOG(ns3::LOG_DEBUG, "Has neighbor");
-    return packet;
-  } else {
-    NS_LOG(ns3::LOG_DEBUG, "Does not have neighbor");
-    // This should be the next hop, as chosen by GPSR/ETX
-    LoonNode* currentLoon = loonnodes[currentNode->GetId()];
-    LoonNode* loonDest;
-    // Find the loon node that corresponds to the dest address
-    for (unsigned int i = 0; i < numLoonNodes; ++i)
-    {
-        if(loonnodes[i]->GetIpv4Addr().IsEqual(dest))
-        {
-            loonDest = loonnodes[i];
-            break;
-	}
-    }  
-    Ipv4Address nextHop;
-    //If the destination is a gateway, use ETX
-    if(loonDest->IsGateway())
-    { 
-        nextHop = current->GetAddress(current->GetNextHopId());
-    }
-    // Else, use GPSR
-    else{
-        nextHop = currentLoon->GetNearestNeighborToDest(loonDest->GetPosition()); 
-    }
-    LoonHeader header;
-    header.SetDest(nextHop.Get());
-    LoonHeader oldHeader;
-    packet->RemoveHeader(oldHeader);
-    packet->AddHeader(header);
-
-    return packet;
-  }
-}
-
 Ipv4Address getAddrFromPacket(Ptr<Packet> packet) {
   // Peek at the header of the packet; we don't want to remove the header in case we need to
   // forward it elsewhere
@@ -195,6 +155,38 @@ Ipv4Address getAddrFromPacket(Ptr<Packet> packet) {
   // Used for debugging, but not generally needed.
   // NS_LOG(ns3::LOG_DEBUG, "header data " << dest);
   return dest;
+}
+
+static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, Ipv4Address dest) {
+  LoonNode* current = loonnodes[currentNode->GetId()];
+  bool hasNeighbor = current->HasNeighbor(dest);
+  if (hasNeighbor) {
+    NS_LOG(ns3::LOG_DEBUG, "Has neighbor");
+    return packet;
+  } else {
+    // if we don't have the destination as our neighbor, let's pick GPSR or ETX and begin routing
+    NS_LOG(ns3::LOG_DEBUG, "Does not have neighbor");
+
+    // get the IP from the packet
+    Ipv4Address dest_addr = getAddrFromPacket(packet);
+    Ipv4Address nextHop;
+    Vector3D dest_location;
+
+    // if we have the IP addr, it's one of our balloons or clients and we should avoid the gateway overhead and use GPSR
+    // else it's not on our network, so we're going to use the ETX route back to the gateway to send it to the internet
+    if (map.GetMapping(dest_addr, dest_location)) {
+        nextHop = current->GetNearestNeighborToDest(dest_location);
+    } else {
+        nextHop = current->GetAddress(current->GetNextHopId());
+    }
+
+    LoonHeader header;
+    header.SetDest(nextHop.Get());
+    LoonHeader oldHeader;
+    packet->RemoveHeader(oldHeader);
+    packet->AddHeader(header);
+    return packet;
+  }
 }
 
 void ReceiveGeneralPacket(Ptr<Socket> socket)
@@ -441,7 +433,6 @@ static void createReceiver(Ptr<Node> receiver, uint16_t port) {
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   Ptr<Socket> recvSink = Socket::CreateSocket (receiver, tid);
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), port);
-  map.AddMapping(local.GetIpv4(), receiver->GetObject<MobilityModel>()->GetPosition());
   recvSink->Bind (local);
   if (port == 80) {
     recvSink->SetRecvCallback (MakeCallback (&ReceiveHeartBeatPacket));
@@ -597,6 +588,8 @@ int main (int argc, char *argv[])
     {
         loonnodes[i] = new Balloon(loonNodesContainer.Get(i));
     }
+
+    map.AddMapping(loonnodes[i]->GetIpv4Addr(), loonnodes[i]->GetPosition());
   }
 
 
