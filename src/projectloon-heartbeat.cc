@@ -488,6 +488,8 @@ int main (int argc, char *argv[])
 {
   // ** Basic setup **
 
+  int status = EXIT_SUCCESS;
+
   // Enable all logging for now, since this is a test
   LogComponentEnable("LoonHeartbeat", ns3::LOG_DEBUG);
 
@@ -502,6 +504,9 @@ int main (int argc, char *argv[])
   bool verbose = false;
   uint16_t heartbeatPort = 80;
 
+  // string pointing to the config file to take
+  std::string config_name;
+
   // parse the command line
   CommandLine cmd;
   cmd.AddValue ("phyMode", "Wifi Phy mode", phyMode);
@@ -510,8 +515,10 @@ int main (int argc, char *argv[])
   cmd.AddValue ("numPackets", "number of packets generated", numPackets);
   cmd.AddValue ("interval", "interval (seconds) between packets", interval);
   cmd.AddValue ("verbose", "turn on all WifiNetDevice log components", verbose);
-  cmd.AddValue("numBalloons", "number of balloons", numBalloons);
-  cmd.AddValue("numGateways", "number of gateways", numGateways);
+  // turn this off so that we only use our default setup or the input from a config file
+  //cmd.AddValue("numBalloons", "number of balloons", numBalloons);
+  //cmd.AddValue("numGateways", "number of gateways", numGateways);
+  cmd.AddValue("config", "a file defining the initial topology of the network. First line should be integer value of the type of topology control to use, then each line should be {G,B,C} <x> <y> <z>", config_name);
   cmd.Parse (argc, argv);
 
   numLoonNodes = numBalloons + numGateways;
@@ -532,6 +539,78 @@ int main (int argc, char *argv[])
 
 
   // ** Start setting up the nodes for the simulation **
+
+  // Set mobility model and initial positions
+  MobilityHelper mobility;
+  Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
+
+  // if we have a config file, use that
+  if (config_name.empty())
+  {
+    // if no config file is defined, use our default configuration
+
+    // Correct values
+    numGateways = 1;
+    numBalloons = 2;
+    numLoonNodes = numGateways + numBalloons;
+
+    // Node 0 (sender) IS the gateway
+    positionAlloc->Add (Vector (0.0, 0.0, 0.0));
+    // Node 1 starts just out of range, moves into range after 2 packets have been sent
+    positionAlloc->Add (Vector (-30200.0, 0.0, 20000.0));
+    // Node 2 is on the gateway
+    positionAlloc->Add (Vector (-35200.0, 0.0, 20000.0));
+  }
+  else
+  {
+    // collect info about each type in these vectors
+    std::vector<Vector3D> gateway_positions;
+    std::vector<Vector3D> balloon_positions;
+
+    std::ifstream config_file(config_name.c_str());
+    char type;
+    double x, y, z;
+    while(config_file >> type >> x >> y >> z)
+    {
+        NS_LOG(ns3::LOG_DEBUG, "Type: " << type << " @ (x,y,z): (" << x << ", " << y << ", " << z << ")");
+        switch (type)
+        {
+            case 'G':
+                gateway_positions.push_back(Vector3D(x, y, z));
+                break;
+            case 'B':
+                balloon_positions.push_back(Vector3D(x, y, z));
+                break;
+            default:
+                NS_LOG(ns3::LOG_ERROR, "Invalid configuration file syntax.");
+                return EXIT_FAILURE;
+                break;
+        }
+    }
+
+    numLoonNodes = numGateways + numBalloons;
+    if (numLoonNodes < 0)
+    {
+        NS_LOG(ns3::LOG_ERROR, "Configuration file specified zero nodes.");
+        return EXIT_SUCCESS;
+    }
+
+    // add the interpreted positions of each type in order to the positionAlloc list.
+    // must stay in order of gateways then balloons for later LoonNode construction to be consistent
+    for (unsigned int i = 0; i < gateway_positions.size(); ++i)
+    {
+      positionAlloc->Add(gateway_positions[i]);
+    }
+    for (unsigned int i = 0; i < balloon_positions.size(); ++i)
+    {
+      positionAlloc->Add(balloon_positions[i]);
+    }
+
+    // update total number of LoonNodes
+    numGateways = gateway_positions.size();
+    numBalloons = balloon_positions.size();
+    numLoonNodes = numGateways + numBalloons;
+  }
 
   NodeContainer loonNodesContainer;
   loonNodesContainer.Create(numLoonNodes);
@@ -568,26 +647,6 @@ int main (int argc, char *argv[])
   wifiMac.SetType ("ns3::AdhocWifiMac");
   NetDeviceContainer devices = wifi.Install (wifiPhy, wifiMac, loonNodesContainer);
 
-  // Set mobility model and initial positions
-  MobilityHelper mobility;
-  Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
-  for (unsigned int i = 0; i < numGateways; ++i)
-  {
-    // TODO place gateways
-  }
-  for (unsigned int i = 0; i < numBalloons; ++i)
-  {
-    // TODO create randomized (or fixed for tests?) balloon positions
-  }
-
-  // TODO remove: for now, just set them fixed while we test so we know what they're doing
-  // Node 0 (sender) IS the gateway
-  positionAlloc->Add (Vector (0.0, 0.0, 0.0));
-  // Node 1 starts just out of range, moves into range after 2 packets have been sent
-  positionAlloc->Add (Vector (-30200.0, 0.0, 20000.0));
-  // Node 2 is on the gateway
-  positionAlloc->Add (Vector (-35200.0, 0.0, 20000.0));
-
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
   mobility.Install(loonNodesContainer);
@@ -606,7 +665,7 @@ int main (int argc, char *argv[])
   // Create Receivers and senders
   std::vector<Ptr<Socket>> heartbeatSources;
   loonnodes = (LoonNode**)calloc(numLoonNodes, sizeof(LoonNode*));
-  int status = EXIT_SUCCESS;
+  status = EXIT_SUCCESS;
   for (unsigned int i = 0; i < numLoonNodes; ++i)
   {
     // Create sender sockets for heartbeat messages
