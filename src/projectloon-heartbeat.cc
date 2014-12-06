@@ -153,6 +153,23 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
     return packet;
   } else {
     // This should be the next hop, as chosen by GPSR
+    Ipv4Address nextHopAddr;
+    LoonNode* currentLoon = loonnodes[currentNode->GetId()];
+    LoonNode* loonDest;
+    // Find the loon node that corresponds to the dest address
+    for (unsigned int i = 0; i < numLoonNodes; ++i)
+    {
+        if(loonnodes[i]->GetIpv4Addr().IsEqual(dest))
+        {
+            loonDest = loonnodes[i];
+            break;
+	}
+    }  
+
+    nextHopAddr = currentLoon->GetNearestNeighborToDest(loonDest->GetPosition()); 
+    LoonHeader header;
+    header.SetDest(nextHopAddr.Get());
+    packet->AddHeader(header);
     return packet;
   }
 }
@@ -187,7 +204,6 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
         Ptr<Packet> packet2 = getNextHopPacket(packet, node, dest);
 	packet2->RemoveAllPacketTags();
         NS_LOG(ns3::LOG_DEBUG, "blargh " << packet->GetSize() << " " << sources[node->GetId()]->GetNode()->GetId());
-        // line that makes things break
         sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(getAddrFromPacket(packet2), otherPort));
       }
     }
