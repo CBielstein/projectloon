@@ -568,6 +568,7 @@ int main (int argc, char *argv[])
   // Create Receivers and senders
   std::vector<Ptr<Socket>> heartbeatSources;
   loonnodes = (LoonNode**)calloc(numLoonNodes, sizeof(LoonNode*));
+  int status = EXIT_SUCCESS;
   for (unsigned int i = 0; i < numLoonNodes; ++i)
   {
     // Create sender sockets for heartbeat messages
@@ -589,7 +590,11 @@ int main (int argc, char *argv[])
         loonnodes[i] = new Balloon(loonNodesContainer.Get(i));
     }
 
-    map.AddMapping(loonnodes[i]->GetIpv4Addr(), loonnodes[i]->GetPosition());
+    status = map.AddMapping(loonnodes[i]->GetIpv4Addr(), loonnodes[i]->GetPosition());
+    if (status != EXIT_SUCCESS)
+    {
+        NS_LOG(ns3::LOG_ERROR, "map.AddMapping(" << loonnodes[i]->GetIpv4Addr() << ", " << loonnodes[i]->GetPosition() << " returned " << status);
+    }
   }
 
 
