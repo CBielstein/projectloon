@@ -39,6 +39,7 @@
 #include "IPtoGPS.h"
 #include "balloon.h"
 #include "gateway.h"
+#include "client.h"
 #include "defines.h"
 #include "loonheader.h"
 
@@ -57,6 +58,8 @@ LoonNode** loonnodes;
 unsigned int numBalloons;
 // Number of gateways in the simulation
 unsigned int numGateways;
+// Number of the clients in the simulation
+unsigned int numClients;
 // Total number of LoonNodes in the simulation (numBalloons+numGateways)
 unsigned int numLoonNodes;
 uint16_t otherPort = 88;
@@ -138,7 +141,7 @@ void ReceiveHeartBeatPacket(Ptr<Socket> socket)
         else
         {
             NS_LOG(ns3::LOG_DEBUG, "Received one packet at node " << socket->GetNode()->GetId()
-                   << " From: " << msg->SenderId << std::endl << "    IsGateway: " << msg->is_gateway << ", HasConnection: "
+                   << " From: " << msg->SenderId << std::endl << "    Type: " << LoonNodeTypeName(msg->node_type) << ", HasConnection: "
                    << msg->has_connection << ", etx_gw: " << msg->etx_gw << std::endl << "    next hop: " << msg->gw_next_node
                    << ", Position: " << msg->position << ", Sender IP: " << msg->sender_ip << std::endl << "    Time: "
                    << msg->timestamp << ", #Ratios: " << msg->delivery_ratios->size());
@@ -356,18 +359,15 @@ static Vector3D Normalize(const Vector3D& v, double scale)
     return ret_val;
 }
 
-struct BalloonMobility
+enum BalloonMobility
 {
-    enum
-    {
-        SEEK_CONNECTION = 1,
-        MAXIMUM_COVERAGE = 2,
-        POINT_TO_POINT = 3
-    };
+    SEEK_CONNECTION = 1,
+    MAXIMUM_COVERAGE = 2,
+    POINT_TO_POINT = 3
 };
 
 // Takes the nodecontainers for the loonnodes and the gateways (on the ground) and finds the correct movement for each balloon
-static void UpdateBalloonPositions(const unsigned int MobilityType)
+static void UpdateBalloonPositions(BalloonMobility MobilityType)
 {
     // ensure we aren't passed empty containers
     if (numBalloons  < 1 || numGateways < 1)
@@ -387,8 +387,8 @@ static void UpdateBalloonPositions(const unsigned int MobilityType)
     // for each balloon, find closest gateway and move toward it at speed
     for (unsigned int i = 0; i < numLoonNodes; ++i)
     {
-        // gateways don't move!
-        if (loonnodes[i]->IsGateway())
+        // only balloons move
+        if (loonnodes[i]->GetType() != LoonNodeType::BALLOON)
         {
             continue;
         }
@@ -420,8 +420,7 @@ static void UpdateBalloonPositions(const unsigned int MobilityType)
             for (unsigned int j = 0; j < numLoonNodes; ++j)
             {
                 // only compare to gateways that aren't us
-                if (j == i || !loonnodes[j]->IsGateway())
-                {
+                if (j == i || loonnodes[j]->GetType() != LoonNodeType::GATEWAY) {
                     continue;
                 }
 
@@ -500,6 +499,7 @@ int main (int argc, char *argv[])
   uint32_t numPackets = 30;
   numBalloons = 2;
   numGateways = 1;
+  numClients = 0;
   double interval = 1.0; // seconds
   bool verbose = false;
   uint16_t heartbeatPort = 80;
@@ -552,7 +552,7 @@ int main (int argc, char *argv[])
     // Correct values
     numGateways = 1;
     numBalloons = 2;
-    numLoonNodes = numGateways + numBalloons;
+    numLoonNodes = numGateways + numBalloons + numClients;
 
     // Node 0 (sender) IS the gateway
     positionAlloc->Add (Vector (0.0, 0.0, 0.0));
@@ -566,6 +566,7 @@ int main (int argc, char *argv[])
     // collect info about each type in these vectors
     std::vector<Vector3D> gateway_positions;
     std::vector<Vector3D> balloon_positions;
+    std::vector<Vector3D> client_positions;
 
     std::ifstream config_file(config_name.c_str());
     char type;
@@ -580,6 +581,9 @@ int main (int argc, char *argv[])
                 break;
             case 'B':
                 balloon_positions.push_back(Vector3D(x, y, z));
+                break;
+            case 'C':
+                client_positions.push_back(Vector3D(x, y, z));
                 break;
             default:
                 NS_LOG(ns3::LOG_ERROR, "Invalid configuration file syntax.");
@@ -605,11 +609,16 @@ int main (int argc, char *argv[])
     {
       positionAlloc->Add(balloon_positions[i]);
     }
+    for (unsigned int i = 0; i < client_positions.size(); ++i)
+    {
+      positionAlloc->Add(client_positions[i]);
+    }
 
     // update total number of LoonNodes
     numGateways = gateway_positions.size();
     numBalloons = balloon_positions.size();
-    numLoonNodes = numGateways + numBalloons;
+    numClients = client_positions.size();
+    numLoonNodes = numGateways + numBalloons + numClients;
   }
 
   NodeContainer loonNodesContainer;
@@ -682,9 +691,13 @@ int main (int argc, char *argv[])
     {
         loonnodes[i] = new Gateway(loonNodesContainer.Get(i));
     }
-    else
+    else if (i < numGateways + numBalloons)
     {
         loonnodes[i] = new Balloon(loonNodesContainer.Get(i));
+    }
+    else
+    {
+        loonnodes[i] = new Client(loonNodesContainer.Get(i));
     }
 
     status = map.AddMapping(loonnodes[i]->GetIpv4Addr(), loonnodes[i]->GetPosition());

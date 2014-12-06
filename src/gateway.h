@@ -11,7 +11,7 @@ namespace Loon
         public:
             Gateway() : LoonNode() { connected = true; }
             Gateway(ns3::Ptr<ns3::Node> _node) : LoonNode(_node) { connected = true; }
-            bool IsGateway() override { return true; }
+            LoonNodeType GetType() const override { return LoonNodeType::GATEWAY; }
 
             // Gateways don't move, so disable setting velocity.
             bool SetVelocity(const ns3::Vector3D& velocity) { return false; }
