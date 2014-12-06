@@ -131,6 +131,31 @@ namespace Loon
         return false;
     }
 
+    ns3::Ipv4Address LoonNode::GetNearestNeighborToDest(ns3::Vector3D destinationPosition)
+    {
+        ns3::Ipv4Address nearestNeighbor;
+        nearestNeighbor = this->GetIpv4Addr();
+        double closestDistance = CalculateDistance(destinationPosition, this->GetPosition());
+        for(std::map<uint32_t, struct Neighbor>::iterator it = neighbors.begin(); it!=neighbors.end(); ++it)
+        {
+            Neighbor neighbor = it->second;
+            ns3::Vector3D neighbPosition = neighbor.position;
+            double distance = CalculateDistance(destinationPosition, neighbPosition);
+            if(distance < closestDistance)
+            {
+		nearestNeighbor = neighbor.ip_addr;
+		closestDistance = distance;
+	    }
+        }
+
+        if(nearestNeighbor.IsEqual(this->GetIpv4Addr()))
+        {
+            // do perimeter routing
+        }
+
+        return nearestNeighbor;
+    }
+
     struct HeartBeat LoonNode::CreateHeartBeat()
     {
         struct HeartBeat hb;

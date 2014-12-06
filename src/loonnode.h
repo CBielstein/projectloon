@@ -143,6 +143,14 @@ namespace Loon
             //  bool: true if we find the neighbor, false if not
             bool HasNeighbor(ns3::Ipv4Address addr);
 
+            // GetNearestNearestNeighborToDest
+            // Determine which neighbor node is closest to the destination node
+            // Args
+	    //   [IN] destinationPosition: Vector containing position of destination
+	    // Return
+	    //   Ipv4Address: the address of the node that isnearest to the destination node
+            ns3::Ipv4Address GetNearestNeighborToDest(ns3::Vector3D destinationPosition);
+
             // CreateHeartBeat
             // Creates a heartbeat message to be sent
             // includes updating etx and neighbor fields for now, though this may be too much on every interval
