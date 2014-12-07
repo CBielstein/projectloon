@@ -604,7 +604,7 @@ int main (int argc, char *argv[])
   uint16_t heartbeatPort = 80;
   gateway_respond = false;
   enable_movement = true;
-  enable_EX = true;
+  enable_ETX = true;
   std::vector<struct SendPackets> sender_list;
 
   // string pointing to the config file to take
@@ -625,11 +625,6 @@ int main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   numLoonNodes = numBalloons + numGateways;
-
-  packetsReceivedPerLoon = std::vector<uint16_t>(numLoonNodes, 0);
-  packetsReceivedForward = std::vector<uint16_t>(numLoonNodes, 0);
-  packetsForwarded = std::vector<uint16_t>(numLoonNodes, 0);
-  packetsSent = std::vector<uint16_t>(numLoonNodes, 0);
 
   // Convert to time object
   Time interPacketInterval = Seconds (interval);
@@ -755,6 +750,12 @@ int main (int argc, char *argv[])
     numLoonNodes = numGateways + numBalloons + numClients;
   }
 
+  packetsReceivedPerLoon = std::vector<uint16_t>(numLoonNodes, 0);
+  packetsReceivedForward = std::vector<uint16_t>(numLoonNodes, 0);
+  packetsForwarded = std::vector<uint16_t>(numLoonNodes, 0);
+  packetsSent = std::vector<uint16_t>(numLoonNodes, 0);
+
+
   NodeContainer loonNodesContainer;
   loonNodesContainer.Create(numLoonNodes);
 
@@ -878,9 +879,9 @@ int main (int argc, char *argv[])
 
   // ** Generate traffic with a final destination in mind. In this case, the final destination is node 0, which is the gateway **
   // Node 0 is a gateway, nodes 1 and 2 are balloons. Nodes 0 and 2 are 2 hops away from each other, with node 1 in the middle.
-  Simulator::ScheduleWithContext (sources[2]->GetNode ()->GetId (),
+  /*Simulator::ScheduleWithContext (sources[2]->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTrafficMultiHop, 
-                                  sources[2], packetSize, numPackets, interPacketInterval, loonnodes[0]->GetIpv4Addr());
+                                  sources[2], packetSize, numPackets, interPacketInterval, loonnodes[0]->GetIpv4Addr());*/
   // ** Begin the simulation **
 
   Simulator::Stop(Seconds(10));
@@ -899,7 +900,7 @@ int main (int argc, char *argv[])
   for (std::vector<uint16_t>::size_type i = 0; i != hopCount.size(); ++i) {
     total = total + hopCount[i];
   }
-  NS_LOG(ns3::LOG_DEBUG, "Average hop count of: " << (total/hopCount.size()));
+  NS_LOG(ns3::LOG_DEBUG, "Average hop count of: " << ((hopCount.size() == 0) ? 0 : (total/hopCount.size())));
 /*  NS_LOG(ns3::LOG_DEBUG, "--Individual metrics--");
   NS_LOG(ns3::LOG_DEBUG, "Packets received at final destination: ");
   for (std::vector<uint16_t>::size_type i = 0; i != packetsReceivedPerLoon.size(); ++i) {
@@ -936,4 +937,3 @@ int main (int argc, char *argv[])
   // yay we're done
   return 0;
 }
-
