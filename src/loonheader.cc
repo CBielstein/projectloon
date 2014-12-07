@@ -113,7 +113,7 @@ ns3::Vector3D
 LoonHeader::GetStartPerimeterRoutingLocation()
 { 
   return startPerimeterRoutingLocation;
-
+}
 void 
 LoonHeader::SetFinalDest (uint32_t data)
 {
