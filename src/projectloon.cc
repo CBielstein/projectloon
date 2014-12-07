@@ -44,7 +44,7 @@
 #include "loonheader.h"
 #include "loontag.h"
 
-NS_LOG_COMPONENT_DEFINE ("LoonHeartbeat");
+NS_LOG_COMPONENT_DEFINE ("ProjectLoon");
 
 using namespace ns3;
 using namespace Loon;
@@ -613,7 +613,7 @@ int main (int argc, char *argv[])
   int status = EXIT_SUCCESS;
 
   // Enable all logging for now, since this is a test
-  LogComponentEnable("LoonHeartbeat", ns3::LOG_DEBUG);
+  LogComponentEnable("ProjectLoon", ns3::LOG_DEBUG);
 
   // Set basic variables
   std::string phyMode ("DsssRate1Mbps");

@@ -1,12 +1,6 @@
 # -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
 
 def build(bld):
-    obj = bld.create_ns3_program('projectloon-topology-simple', ['projectloon', 'core', 'internet', 'mobility', 'wifi', 'config-store', 'stats', 'lte'])
-    obj.source = 'projectloon-topology-simple.cc'
-
-    obj = bld.create_ns3_program('projectloon-elynn', ['projectloon', 'core', 'internet', 'mobility', 'wifi', 'config-store', 'stats', 'lte'])
-    obj.source = 'projectloon-elynn.cc'
-
-    obj = bld.create_ns3_program('projectloon-heartbeat', ['projectloon', 'core', 'internet', 'mobility', 'wifi', 'config-store', 'stats'])
-    obj.source = ['projectloon-heartbeat.cc', 'IPtoGPS.cpp', 'loonnode.cpp', 'loonheader.cc', 'loontag.cc']
+    obj = bld.create_ns3_program('projectloon', ['projectloon', 'core', 'internet', 'mobility', 'wifi', 'config-store', 'stats'])
+    obj.source = ['projectloon.cc', 'IPtoGPS.cpp', 'loonnode.cpp', 'loonheader.cc', 'loontag.cc']
     obj.cxxflags = '-std=c++0x'
