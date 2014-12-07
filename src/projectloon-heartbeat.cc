@@ -67,6 +67,9 @@ unsigned int numLoonNodes;
 bool gateway_respond;
 // If true, we should do movement
 bool enable_movement;
+// If true, enable ETX route caching
+// TODO
+bool enable_ETX;
 uint16_t otherPort = 88;
 std::vector<Ptr<Socket>> sources;
 std::vector<uint16_t> packetsReceivedPerLoon;
@@ -601,6 +604,7 @@ int main (int argc, char *argv[])
   uint16_t heartbeatPort = 80;
   gateway_respond = false;
   enable_movement = true;
+  enable_EX = true;
   std::vector<struct SendPackets> sender_list;
 
   // string pointing to the config file to take
@@ -678,7 +682,8 @@ int main (int argc, char *argv[])
     //  S f t c i     // sends c number packet from f to t on interval i in seconds
                             // NOTE: f and i are nodes, which will be reordered from the list. Gateways, then Balloons, then clients
     //  R             // turn on gateway reponces. Any gateway which is a final dest of a message, reponds with its own message
-    //  X             // Disable mvoement
+    //  X             // Disable movement
+    //  E             // Disable ETX
 
     while(config_file >> type)
     {
@@ -712,6 +717,8 @@ int main (int argc, char *argv[])
                 enable_movement = false;
                 NS_LOG(ns3::LOG_DEBUG, "Disable movement.");
                 break;
+            case 'E':
+                enable_ETX = false;
             default:
                 NS_LOG(ns3::LOG_ERROR, "Invalid configuration file syntax.");
                 return EXIT_FAILURE;
