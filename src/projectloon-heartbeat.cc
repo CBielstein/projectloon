@@ -63,6 +63,10 @@ unsigned int numGateways;
 unsigned int numClients;
 // Total number of LoonNodes in the simulation (numBalloons+numGateways)
 unsigned int numLoonNodes;
+// If true, gateways should respond to each message that terminates at them
+bool gateway_respond;
+// If true, we should do movement
+bool enable_movement;
 uint16_t otherPort = 88;
 std::vector<Ptr<Socket>> sources;
 std::vector<uint16_t> packetsReceivedPerLoon;
@@ -70,6 +74,10 @@ std::vector<uint16_t> packetsReceivedForward;
 std::vector<uint16_t> packetsForwarded;
 std::vector<uint16_t> packetsSent;
 std::vector<uint16_t> hopCount;
+
+// ** Forward declare functions to avoid reordering a lot **
+static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
+                             uint32_t pktCount, Time pktInterval, Ipv4Address& address);
 
 
 // ** Define helper functions **
@@ -274,6 +282,13 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
         Ptr<Packet> packet2 = getNextHopPacket(packet, node, finalDest);
         if (packet2 == NULL) {
           NS_LOG(ns3::LOG_DEBUG, "packet has a final destination that is not in our network. Drop it!");
+          if (gateway_respond) {
+            LoonTag tag;
+            packet->PeekPacketTag(tag);
+            Simulator::ScheduleWithContext(socket->GetNode()->GetId(),
+                                           Seconds (1.0), &GenerateTrafficSpecific,
+                                           socket, 1000, 1, Seconds(0), Ipv4Address(tag.GetOriginalSender()));
+          }
           return;
         }
         LoonTag tag;
@@ -310,8 +325,27 @@ static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
 {
   if (pktCount > 0)
     {
+
+      Ptr<Packet> packet = Create<Packet>(pktSize);
+
+      // Create the LoonHeader
+      LoonHeader header;
+      header.SetDest(address.Get());
+      header.SetFinalDest(address.Get());
+
+      //Create the LoonTag
+      LoonTag tag;
+      Ptr<Node> node = socket->GetNode();
+      Ptr<Ipv4> ipv4 = node->GetObject<ns3::Ipv4>();
+      Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1,0);
+      Ipv4Address addr = iaddr.GetLocal();
+      tag.SetOriginalSender(addr.Get());
+
+      packet->AddHeader(header);
+      packet->AddPacketTag(tag);
+
       // not really sure what the flag is.... so I chose 16 lol
-      int test = socket->SendTo (Create<Packet> (pktSize), 16, InetSocketAddress (address, 88));
+      int test = socket->SendTo (packet, 16, InetSocketAddress (address, 88));
       if (test == -1) {
         NS_LOG(ns3::LOG_DEBUG, "SendTo failed");
       }
@@ -537,6 +571,14 @@ static Ptr<Socket> createSender(Ptr<Node> sender, uint16_t port) {
   return source;
 }
 
+struct SendPackets
+{
+    uint32_t src;
+    uint32_t dest;
+    uint32_t count;
+    double   interval;
+};
+
 int main (int argc, char *argv[])
 {
   // ** Basic setup **
@@ -557,6 +599,9 @@ int main (int argc, char *argv[])
   double interval = 1.0; // seconds
   bool verbose = false;
   uint16_t heartbeatPort = 80;
+  gateway_respond = false;
+  enable_movement = true;
+  std::vector<struct SendPackets> sender_list;
 
   // string pointing to the config file to take
   std::string config_name;
@@ -576,7 +621,7 @@ int main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   numLoonNodes = numBalloons + numGateways;
-  
+
   packetsReceivedPerLoon = std::vector<uint16_t>(numLoonNodes, 0);
   packetsReceivedForward = std::vector<uint16_t>(numLoonNodes, 0);
   packetsForwarded = std::vector<uint16_t>(numLoonNodes, 0);
@@ -625,20 +670,47 @@ int main (int argc, char *argv[])
 
     std::ifstream config_file(config_name.c_str());
     char type;
-    double x, y, z;
-    while(config_file >> type >> x >> y >> z)
+    double x, y, z, i;
+    uint32_t f, t, c;
+
+    // valid config lines:
+    //  {G,B,C} x y z // sets a G, B, or C at location (x,y,z)
+    //  S f t c i     // sends c number packet from f to t on interval i in seconds
+                            // NOTE: f and i are nodes, which will be reordered from the list. Gateways, then Balloons, then clients
+    //  R             // turn on gateway reponces. Any gateway which is a final dest of a message, reponds with its own message
+    //  X             // Disable mvoement
+
+    while(config_file >> type)
     {
-        NS_LOG(ns3::LOG_DEBUG, "Type: " << type << " @ (x,y,z): (" << x << ", " << y << ", " << z << ")");
         switch (type)
         {
             case 'G':
+                config_file >> x >> y >> z;
+                NS_LOG(ns3::LOG_DEBUG, "Added gateway at (" << x << ", " << y << ", " << z << ")");
                 gateway_positions.push_back(Vector3D(x, y, z));
                 break;
             case 'B':
+                config_file >> x >> y >> z;
+                NS_LOG(ns3::LOG_DEBUG, "Added balloon at (" << x << ", " << y << ", " << z << ")");
                 balloon_positions.push_back(Vector3D(x, y, z));
                 break;
             case 'C':
+                config_file >> x >> y >> z;
+                NS_LOG(ns3::LOG_DEBUG, "Added client at (" << x << ", " << y << ", " << z << ")");
                 client_positions.push_back(Vector3D(x, y, z));
+                break;
+            case 'S':
+                config_file >> f >> t >> c >> i;
+                NS_LOG(ns3::LOG_DEBUG, "Added sending " << c << " packets from node " << f << " to node " << t << " with interval " << i);
+                sender_list.push_back(SendPackets{ f, t, c, i});
+                break;
+            case 'R':
+                gateway_respond = true;
+                NS_LOG(ns3::LOG_DEBUG, "Enabled gateway replies.");
+                break;
+            case 'X':
+                enable_movement = false;
+                NS_LOG(ns3::LOG_DEBUG, "Disable movement.");
                 break;
             default:
                 NS_LOG(ns3::LOG_ERROR, "Invalid configuration file syntax.");
@@ -766,13 +838,24 @@ int main (int argc, char *argv[])
   // ** Schedule events **
 
   // update position and do movement
-  Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, BalloonMobility::SEEK_CONNECTION);
+  if (enable_movement)
+  {
+    Simulator::Schedule(Seconds(BALLOON_POSITION_UPDATE_RATE), &UpdateBalloonPositions, BalloonMobility::SEEK_CONNECTION);
+  }
 
   // activate heartbeats
   for (unsigned int i = 0; i < numLoonNodes; ++i)
   {
     // Schedule the event, with the jitter
     Simulator::Schedule(Seconds(Jitter(1.0)), &SendHeartBeat, heartbeatSources[i], loonnodes[i], Seconds(BALLOON_HEARTBEAT_INTERVAL));
+  }
+
+  // Add sending rules from the config file
+  for (unsigned int i = 0; i < sender_list.size(); ++i)
+  {
+    Simulator::ScheduleWithContext(sender_list[i].src, Seconds(1.5), &GenerateTrafficSpecific,
+                                   sources[sender_list[i].src], packetSize, sender_list[i].count, interPacketInterval,
+                                   loonnodes[sender_list[i].dest]->GetIpv4Addr());
   }
 
   // ** Generate broadcast traffic **
