@@ -137,10 +137,9 @@ namespace Loon
         // Check if any entry for node_id exists
         for (std::map<uint32_t, struct Neighbor>::iterator it = neighbors.begin(); it!=neighbors.end(); ++it)
         {
-            Neighbor neighbor = it->second;
-            if (neighbor.gw_next_node == nodeId)
+            if (it->first == nodeId)
             {
-                return neighbor.ip_addr;
+                return it->second.ip_addr;
             }
         }
         return ns3::Ipv4Address::GetAny();
