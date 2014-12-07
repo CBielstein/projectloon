@@ -68,7 +68,6 @@ bool gateway_respond;
 // If true, we should do movement
 bool enable_movement;
 // If true, enable ETX route caching
-// TODO
 bool enable_ETX;
 uint16_t otherPort = 88;
 std::vector<Ptr<Socket>> sources;
@@ -251,13 +250,16 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
 	}
     } else {
      if(current->GetType() == LoonNodeType::GATEWAY) {
+         NS_LOG(ns3::LOG_DEBUG, "RECEIVED AT GATEWAY! YAY!");
          return NULL;
        }
+        NS_LOG(ns3::LOG_DEBUG, "ETX routing to gateway");
         nextHop = current->GetAddress(current->GetNextHopId());
     }
 
     if(nextHop.IsEqual(current->GetIpv4Addr()))
     {
+        NS_LOG(ns3::LOG_DEBUG, "We're already here. Dropping.");
 	return NULL;
     }
 
@@ -601,6 +603,7 @@ struct SendPackets
     uint32_t dest;
     uint32_t count;
     double   interval;
+    bool     to_internet;
 };
 
 int main (int argc, char *argv[])
@@ -700,6 +703,7 @@ int main (int argc, char *argv[])
     //  R             // turn on gateway reponces. Any gateway which is a final dest of a message, reponds with its own message
     //  X             // Disable movement
     //  E             // Disable ETX
+    //  I f c i       // Sends packets to the internet via a gateway (tests ETX) from node f on interval i for c total packets
 
     while(config_file >> type)
     {
@@ -723,7 +727,7 @@ int main (int argc, char *argv[])
             case 'S':
                 config_file >> f >> t >> c >> i;
                 NS_LOG(ns3::LOG_DEBUG, "Added sending " << c << " packets from node " << f << " to node " << t << " with interval " << i);
-                sender_list.push_back(SendPackets{ f, t, c, i});
+                sender_list.push_back(SendPackets{ f, t, c, i, false});
                 break;
             case 'R':
                 gateway_respond = true;
@@ -735,6 +739,13 @@ int main (int argc, char *argv[])
                 break;
             case 'E':
                 enable_ETX = false;
+                NS_LOG(ns3::LOG_DEBUG, "Disable ETX");
+                break;
+            case 'I':
+                config_file >> f >> c >> i;
+                NS_LOG(ns3::LOG_DEBUG, "Added sending " << c << " packets from node " << f << " to node internet with interval " << i);
+                sender_list.push_back(SendPackets{ f, 0, c, i, true});
+                break;
             default:
                 NS_LOG(ns3::LOG_ERROR, "Invalid configuration file syntax.");
                 return EXIT_FAILURE;
@@ -882,9 +893,10 @@ int main (int argc, char *argv[])
   // Add sending rules from the config file
   for (unsigned int i = 0; i < sender_list.size(); ++i)
   {
-    Simulator::ScheduleWithContext(sender_list[i].src, Seconds(1.5), &GenerateTrafficSpecific,
+    Ipv4Address dest = sender_list[i].to_internet ? Ipv4Address::GetAny() : loonnodes[sender_list[i].dest]->GetIpv4Addr();
+    Simulator::ScheduleWithContext(sender_list[i].src, Seconds(5.5), &GenerateTrafficSpecific,
                                    sources[sender_list[i].src], packetSize, sender_list[i].count, interPacketInterval,
-                                   loonnodes[sender_list[i].dest]->GetIpv4Addr());
+                                   dest);
   }
 
   // ** Generate broadcast traffic **
