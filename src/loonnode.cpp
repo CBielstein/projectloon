@@ -225,7 +225,7 @@ namespace Loon
 	{
 	    Neighbor v = it->second;
 	    bool canAdd = true;
-	    for(std::map<uint32_t, struct Neighbor>::iterator it2 = neighbors.begin(); it2!=neighbors.end(); ++it)
+	    for(std::map<uint32_t, struct Neighbor>::iterator it2 = neighbors.begin(); it2!=neighbors.end(); ++it2)
 	    {
 		Neighbor w = it2->second;
 		if((w.ip_addr).IsEqual(v.ip_addr))

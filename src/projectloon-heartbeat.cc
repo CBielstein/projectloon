@@ -194,51 +194,67 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
     Ipv4Address nextHop;
     Vector3D dest_location;
 
+    bool greedyRouting = true; // This is to put in the header as packets are forwarded
+    double startPerimeterRoutingDistance = 0.0;
+    Vector3D startPerimeterRoutingLocation = current->GetPosition();
+
     // ** Commented out for now **
     // if we have the IP addr, it's one of our balloons or clients and we should avoid the gateway overhead and use GPSR
     // else it's not on our network, so we're going to use the ETX route back to the gateway to send it to the internet
-/*    if (map.GetMapping(finalDest, dest_location)) {
+    if (map.GetMapping(finalDest, dest_location)) {
 	LoonHeader destinationHeader;
 	packet->PeekHeader(destinationHeader);
 	Vector3D current_location = current->GetPosition();
-	if(destinationHeader.IsRoutingModeGreedy()){	
+	if(destinationHeader.IsRoutingModeGreedy()){
+	    NS_LOG(ns3::LOG_DEBUG, "Greedy forwarding");	
             nextHop = current->GetNearestNeighborToDest(dest_location);
 	    Ipv4Address currentAddr = current->GetIpv4Addr();
 	    // If the nearest neighbor was the current node itself, greedy forwarding failed and we need to switch to perimeter routing.
 	    if(nextHop.IsEqual(currentAddr)){
-		destinationHeader.SetRoutingModeGreedy(false);
-		double distance = CalculateDistance(current_location, dest_location);
-		Vector3D start_location = current->GetPosition();
-		destinationHeader.SetStartPerimeterRoutingDistance(distance);
-		destinationHeader.SetStartPerimeterRoutingLocation(start_location);
-	    	current->GetNextPerimeterNode(dest_location, start_location);
+		NS_LOG(ns3::LOG_DEBUG, "Greedy forwarding failed, switching to perimeter routing");
+		greedyRouting = false;
+		startPerimeterRoutingDistance = CalculateDistance(current_location, dest_location);
+		startPerimeterRoutingLocation = current->GetPosition();
+	    	nextHop = current->GetNextPerimeterNode(dest_location, startPerimeterRoutingLocation);
 	    }
 	}
 	else{
+	    NS_LOG(ns3::LOG_DEBUG, "Perimeter routing");
 	    // First, check if the current node is closer than the start perimeter routing position.
 	    // If it is, we can switch back to greedy.  Otherwise continue perimeter routing.
-	    double startPerimeterRoutingDistance = destinationHeader.GetStartPerimeterRoutingDistance();
+	    greedyRouting = false;
+	    startPerimeterRoutingDistance = destinationHeader.GetStartPerimeterRoutingDistance();
+	    startPerimeterRoutingLocation = destinationHeader.GetStartPerimeterRoutingLocation();
 	    double currentDistance = CalculateDistance(current_location, dest_location);
             if(currentDistance < startPerimeterRoutingDistance){
-	    	destinationHeader.SetRoutingModeGreedy(true);
-		current->GetNearestNeighborToDest(dest_location);
+		NS_LOG(ns3::LOG_DEBUG, "Returning to greedy forwarding");
+		greedyRouting = true;
+		nextHop = current->GetNearestNeighborToDest(dest_location);
 	    }
 	    else{
-		Vector3D start_location = destinationHeader.GetStartPerimeterRoutingLocation();
-	        current->GetNextPerimeterNode(dest_location, start_location);
+	        nextHop = current->GetNextPerimeterNode(dest_location, startPerimeterRoutingLocation);
+		NS_LOG(ns3::LOG_DEBUG, "next perimeter hop: " << nextHop.Get());
 	    }
 	}
-    } else {*/
-    /* if(current->GetType() == LoonNodeType::GATEWAY) {
+    } else {
+     if(current->GetType() == LoonNodeType::GATEWAY) {
          return NULL;
        }
-    */
+    
         nextHop = current->GetAddress(current->GetNextHopId());
-//    }
+    }
+
+    if(nextHop.IsEqual(current->GetIpv4Addr()))
+    {
+	return NULL;
+    }
 
     LoonHeader header;
     header.SetDest(nextHop.Get());
     header.SetFinalDest(finalDest.Get());
+    header.SetRoutingModeGreedy(greedyRouting);
+    header.SetStartPerimeterRoutingDistance(startPerimeterRoutingDistance);
+    header.SetStartPerimeterRoutingLocation(startPerimeterRoutingLocation);
     LoonHeader oldHeader;
     packet->RemoveHeader(oldHeader);
     packet->AddHeader(header);
