@@ -333,10 +333,20 @@ static void GenerateTrafficMultiHop (Ptr<Socket> socket, uint32_t pktSize,
   if (pktCount > 0)
     {
       Ptr<Packet> packet = Create<Packet>(pktSize);
+
+      // Create the LoonHeader
       LoonHeader header;
       header.SetDest(address.Get());
       header.SetFinalDest(address.Get());
+
+      //Create the LoonTag
       LoonTag tag;
+      Ptr<Node> node = socket->GetNode();
+      Ptr<Ipv4> ipv4 = node->GetObject<ns3::Ipv4>();
+      Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1,0);
+      Ipv4Address addr = iaddr.GetLocal();
+      tag.SetOriginalSender(addr.Get());
+
       packet->AddHeader(header);
       packet->AddPacketTag(tag);
 

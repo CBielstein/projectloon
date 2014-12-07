@@ -16,6 +16,9 @@ public:
   void IncrementHopCount ();
   uint16_t GetHopCount ();
 
+  void SetOriginalSender (uint32_t sender);
+  uint32_t GetOriginalSender ();
+
   static TypeId GetTypeId (void);
   virtual TypeId GetInstanceTypeId (void) const;
   virtual void Print (std::ostream &os) const;
@@ -25,4 +28,5 @@ public:
 
 private:
   uint16_t hopCount = 1;
+  uint32_t addr;
 };

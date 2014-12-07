@@ -37,7 +37,7 @@ uint32_t
 LoonTag::GetSerializedSize (void) const
 {
   // we reserve 2 bytes for our header.
-  return 2;
+  return 6;
 }
 void
 LoonTag::Serialize (TagBuffer start) const
@@ -45,6 +45,7 @@ LoonTag::Serialize (TagBuffer start) const
   // we can serialize four bytes at the start of the buffer.
   // we write them in network byte order.
   start.WriteU16 (hopCount);
+  start.WriteU32 (addr);
 }
 void
 LoonTag::Deserialize (TagBuffer start)
@@ -53,6 +54,7 @@ LoonTag::Deserialize (TagBuffer start)
   // we read them in network byte order and store them
   // in host byte order.
   hopCount = start.ReadU16 ();
+  addr = start.ReadU32 ();
 }
 
 void LoonTag::IncrementHopCount() {
@@ -61,4 +63,13 @@ void LoonTag::IncrementHopCount() {
 
 uint16_t LoonTag::GetHopCount() {
   return hopCount;
+}
+
+// uint32_t representation of the Ipv4Address of the original sender
+void LoonTag::SetOriginalSender(uint32_t sender) {
+  addr = sender;
+}
+
+uint32_t LoonTag::GetOriginalSender() {
+  return addr;
 }
