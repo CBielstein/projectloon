@@ -364,7 +364,10 @@ static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
       packet->AddPacketTag(tag);
 
       Ptr<Packet> packet2 = getNextHopPacket(packet, socket->GetNode(), finalDest);
-
+      if(packet2 == NULL){
+	NS_LOG(ns3::LOG_DEBUG, "No neighbors within range to send to; dropping packet");
+ 	return;
+      }
       // not really sure what the flag is.... so I chose 16 lol
       int test = socket->SendTo (packet, 16, InetSocketAddress (GetNextDestOfPacket(packet2), otherPort));
       if (test == -1) {
