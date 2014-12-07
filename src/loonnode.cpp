@@ -171,10 +171,75 @@ namespace Loon
         return nearestNeighbor;
     }
 
-    ns3::Ipv4Address LoonNode::GetNextPerimeterNode(ns3::Vector3D destinationPosition)
+    ns3::Ipv4Address LoonNode::GetNextPerimeterNode(ns3::Vector3D destinationPosition, ns3::Vector3D startPosition)
     {
 	// This will start perimeter routing.  For now, just returning this until perimeter routing works....
-	return this->GetIpv4Addr();
+	double startToDestX = destinationPosition.x - startPosition.x;
+	double startToDestY = destinationPosition.y - startPosition.y;
+	double startToDestZ = destinationPosition.z - startPosition.z;
+
+	ns3::Vector3D startToDestVector = ns3::Vector3D(startToDestX, startToDestY, startToDestZ);
+	std::vector<Neighbor> planarNeighbors = GetPlanarNeighbors();
+	double angleToRightHandNeighbor = 359;	
+	ns3::Ipv4Address nextAddress = this->GetIpv4Addr();
+
+	for(unsigned i = 0; i < planarNeighbors.size(); ++i)
+	{
+	  Neighbor current = planarNeighbors.at(i);
+	  ns3::Vector3D currentPosition = current.position;
+	  double startToCurrentX = currentPosition.x - startPosition.x;
+	  double startToCurrentY = currentPosition.y - startPosition.y;
+	  double startToCurrentZ = currentPosition.z - startPosition.z;
+	  ns3::Vector3D startToCurrentVector = ns3::Vector3D(startToCurrentX, startToCurrentY, startToCurrentZ);
+
+	  double dotProduct = (startToCurrentVector.x * startToDestVector.x) + (startToCurrentVector.y * startToDestVector.y) + (startToCurrentVector.z * startToDestVector.z);
+	  double magnitude1 = CalculateDistance(startPosition, destinationPosition);
+	  double magnitude2 = CalculateDistance(startPosition, currentPosition);
+	  double angle = dotProduct/(magnitude1 * magnitude2);
+	  if(angle < angleToRightHandNeighbor && angle > 0)
+	  {
+		angleToRightHandNeighbor = angle;
+		nextAddress = current.ip_addr;
+	  } 
+	}
+
+	return nextAddress;
+    }
+
+    std::vector<Neighbor> LoonNode::GetPlanarNeighbors()
+    {
+	ns3::Vector3D uPosition = this->GetPosition();
+	std::vector<Neighbor> planarNeighbors;
+	for(std::map<uint32_t, struct Neighbor>::iterator it = neighbors.begin(); it!=neighbors.end(); ++it)
+	{
+	    Neighbor v = it->second;
+	    bool canAdd = true;
+	    for(std::map<uint32_t, struct Neighbor>::iterator it2 = neighbors.begin(); it2!=neighbors.end(); ++it)
+	    {
+		Neighbor w = it2->second;
+		if((w.ip_addr).IsEqual(v.ip_addr))
+		{
+		  continue;
+		}
+		else
+		{
+		  // Calculate distances and eliminate ones that are too long
+		  double uv = CalculateDistance(uPosition, v.position);
+		  double uw = CalculateDistance(uPosition, w.position);
+		  double vw = CalculateDistance(v.position, w.position);
+		  if(uv > uw || uv > vw)
+		  {
+		    canAdd = false;
+	  	    break;
+		  }
+		}
+		if(canAdd)
+		{
+		  planarNeighbors.push_back(v);
+		}
+	    }
+	}
+	return planarNeighbors;
     }
 
     struct HeartBeat LoonNode::CreateHeartBeat()

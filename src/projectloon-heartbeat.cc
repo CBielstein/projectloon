@@ -188,8 +188,10 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
 	    if(nextHop.IsEqual(currentAddr)){
 		destinationHeader.SetRoutingModeGreedy(false);
 		double distance = CalculateDistance(current_location, dest_location);
+		Vector3D start_location = current->GetPosition();
 		destinationHeader.SetStartPerimeterRoutingDistance(distance);
-	    	current->GetNextPerimeterNode(dest_location);
+		destinationHeader.SetStartPerimeterRoutingLocation(start_location);
+	    	current->GetNextPerimeterNode(dest_location, start_location);
 	    }
 	}
 	else{
@@ -202,7 +204,8 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
 		current->GetNearestNeighborToDest(dest_location);
 	    }
 	    else{
-	        current->GetNextPerimeterNode(dest_location);
+		Vector3D start_location = destinationHeader.GetStartPerimeterRoutingLocation();
+	        current->GetNextPerimeterNode(dest_location, start_location);
 	    }
 	}
     } else {

@@ -161,8 +161,14 @@ namespace Loon
 	    // [IN] destinationPosition: Vector containing position of destination
 	    // Return
 	    //	  Ipv4Address: the address of the next node to route to
-	    ns3::Ipv4Address GetNextPerimeterNode(ns3::Vector3D destionationPosition);
+	    ns3::Ipv4Address GetNextPerimeterNode(ns3::Vector3D destinationPosition, ns3::Vector3D startPosition);
 
+	    // GetPlanarNeighbors
+	    // Used for perimeter routing.  Determine which neighbors are valid to hop to for perimeter routing after planarization.
+	    // Return
+	    // 	  std::vector<Neighbor>: Valid neighbors for hopping to
+	    std::vector<Neighbor> GetPlanarNeighbors();
+	    
             // CreateHeartBeat
             // Creates a heartbeat message to be sent
             // includes updating etx and neighbor fields for now, though this may be too much on every interval
