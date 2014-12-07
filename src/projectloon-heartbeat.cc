@@ -65,6 +65,7 @@ unsigned int numLoonNodes;
 uint16_t otherPort = 88;
 std::vector<Ptr<Socket>> sources;
 std::vector<uint16_t> packetsReceivedPerLoon;
+std::vector<uint16_t> packetsReceivedForward;
 std::vector<uint16_t> packetsForwarded;
 std::vector<uint16_t> packetsSent;
 
@@ -178,6 +179,12 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
   bool hasNeighbor = current->HasNeighbor(finalDest);
   if (hasNeighbor) {
     NS_LOG(ns3::LOG_DEBUG, "Has neighbor");
+    LoonHeader header;
+    header.SetDest(finalDest.Get());
+    header.SetFinalDest(finalDest.Get());
+    LoonHeader oldHeader;
+    packet->RemoveHeader(oldHeader);
+    packet->AddHeader(header);
     return packet;
   } else {
     // if we don't have the destination as our neighbor, let's pick GPSR or ETX and begin routing
@@ -219,6 +226,10 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
 	    }
 	}
     } else {*/
+    /* if(current->GetType() == LoonNodeType::GATEWAY) {
+         return NULL;
+       }
+    */
         nextHop = current->GetAddress(current->GetNextHopId());
 //    }
 
@@ -245,6 +256,7 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
       Ipv4Address addr = iaddr.GetLocal();
 
       NS_LOG(ns3::LOG_DEBUG, "current address " << addr << " intended for " << finalDest);
+      packetsReceivedForward[node->GetId()]++;
 
       if (finalDest == addr) {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
@@ -252,6 +264,10 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
       } else {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId() << " intended for " << finalDest);
         Ptr<Packet> packet2 = getNextHopPacket(packet, node, finalDest);
+        if (packet2 == NULL) {
+          NS_LOG(ns3::LOG_DEBUG, "packet has a final destination that is not in our network. Drop it!");
+          return;
+        }
 	packet2->RemoveAllPacketTags();
         sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(GetNextDestOfPacket(packet2), otherPort));
 	packetsForwarded[node->GetId()]++;
@@ -538,6 +554,7 @@ int main (int argc, char *argv[])
   numLoonNodes = numBalloons + numGateways;
   
   packetsReceivedPerLoon = std::vector<uint16_t>(numLoonNodes, 0);
+  packetsReceivedForward = std::vector<uint16_t>(numLoonNodes, 0);
   packetsForwarded = std::vector<uint16_t>(numLoonNodes, 0);
   packetsSent = std::vector<uint16_t>(numLoonNodes, 0);
 
@@ -760,7 +777,8 @@ int main (int argc, char *argv[])
   for (std::vector<uint16_t>::size_type i = 0; i != packetsReceivedPerLoon.size(); ++i) {
     NS_LOG(ns3::LOG_DEBUG, "node " << i << " at address " << loonnodes[i]->GetIpv4Addr()
            << " sent " << packetsSent[i] << " packets, "
-           << "forwarded " << packetsForwarded[i] << " packets, and received " 
+           << "forwarded " << packetsForwarded[i] << " packets, received "
+           << packetsReceivedForward[i] << " total packets, and received "
            << packetsReceivedPerLoon[i] << " as the final destination");
   }
 /*  NS_LOG(ns3::LOG_DEBUG, "--Individual metrics--");
@@ -773,6 +791,11 @@ int main (int argc, char *argv[])
   NS_LOG(ns3::LOG_DEBUG, "Number of packets forwarded: ");
   for (std::vector<uint16_t>::size_type i = 0; i != packetsForwarded.size(); ++i) {
     NS_LOG(ns3::LOG_DEBUG, "node " << i << " forwarded " << packetsForwarded[i] << " packets");
+  }
+  NS_LOG(ns3::LOG_DEBUG, "--");
+  NS_LOG(ns3::LOG_DEBUG, "Total number of packets received: ");
+  for (std::vector<uint16_t>::size_type i = 0; i != packetsForwarded.size(); ++i) {
+    NS_LOG(ns3::LOG_DEBUG, "node " << i << " received a total of " << packetsReceivedForward[i] << " packets");
   }
   NS_LOG(ns3::LOG_DEBUG, "--");
   NS_LOG(ns3::LOG_DEBUG, "Number of packets sent: ");
