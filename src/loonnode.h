@@ -15,6 +15,15 @@
 
 namespace Loon
 {
+    // Holdes the types of gateways
+    enum LoonNodeType
+    {
+        BALLOON = 1,
+        GATEWAY = 2,
+        CLIENT = 3
+    };
+
+    const char* LoonNodeTypeName(const LoonNodeType& type);
 
     // Holds information for heartbeats between balloons
     // This is a struct and not a class to ensure data is stored in memory together
@@ -24,8 +33,8 @@ namespace Loon
         // Node ID of sender
         uint32_t SenderId;
 
-        // True if this is advertising itself as a gateway
-        bool is_gateway;
+        // the LoonNodeType of the heartbeat sender
+        LoonNodeType node_type;
 
         // True if this is directly or indirectly connected to a gateway
         bool has_connection;
@@ -55,8 +64,8 @@ namespace Loon
         // The IP address of the neighboring node
         ns3::Ipv4Address ip_addr;
 
-        // True if this is advertising itself as a gateway
-        bool is_gateway;
+        // the LoonNodeType of the heartbeat sender
+        LoonNodeType node_type;
 
         // True if this is directly or indirectly connected to a gateway
         bool has_connection;
@@ -174,11 +183,9 @@ namespace Loon
             // includes updating etx and neighbor fields for now, though this may be too much on every interval
             struct HeartBeat CreateHeartBeat();
 
-            // IsGateway
-            // Used to determine if this node is a gateway
-            // Return
-            //  true if the node is a gateway, false if not
-            virtual bool IsGateway() = 0;
+            // GetType
+            // Returns an entry coresponding to the LoonNodeType struct enum
+            virtual LoonNodeType GetType() const = 0;
 
             // HasConnection
             // returns if this current node has a connection

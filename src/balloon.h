@@ -11,7 +11,7 @@ namespace Loon
         public:
             Balloon() : LoonNode() { connected = false; }
             Balloon(ns3::Ptr<ns3::Node> _node) : LoonNode(_node) { connected = false; }
-            bool IsGateway() override { return false; }
+            LoonNodeType GetType() const override { return LoonNodeType::BALLOON; }
     };
 }
 

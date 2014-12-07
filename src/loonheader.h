@@ -19,6 +19,9 @@ public:
   void SetDest (uint32_t data);
   uint32_t GetDest (void) const;
 
+  void SetFinalDest (uint32_t data);
+  uint32_t GetFinalDest (void) const;
+
   static TypeId GetTypeId (void);
   virtual TypeId GetInstanceTypeId (void) const;
   virtual void Print (std::ostream &os) const;
@@ -36,4 +39,5 @@ private:
   double startPerimeterRoutingDistance;
   bool greedy = true;
   ns3::Vector3D startPerimeterRoutingLocation;
+  uint32_t finalDest;
 };

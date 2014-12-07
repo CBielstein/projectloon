@@ -2,6 +2,17 @@
 
 namespace Loon
 {
+    const char* LoonNodeTypeName(const LoonNodeType& type)
+    {
+        switch (type)
+        {
+            case LoonNodeType::BALLOON: return "Balloon";
+            case LoonNodeType::GATEWAY: return "Gateway";
+            case LoonNodeType::CLIENT: return "Client";
+            default: return "Invalid Type.";
+        }
+    }
+
     LoonNode::LoonNode()
     {
         node = NULL;
@@ -65,7 +76,7 @@ namespace Loon
             // if not, create it
             struct Neighbor nb;
             nb.ip_addr = hb.sender_ip;
-            nb.is_gateway = hb.is_gateway;
+            nb.node_type = hb.node_type;
             nb.has_connection = hb.has_connection;
             nb.gw_next_node = hb.gw_next_node;
             nb.etx_gw = hb.etx_gw;
@@ -83,7 +94,7 @@ namespace Loon
             if (entry->second.updated < hb.timestamp)
             {
                 entry->second.ip_addr = hb.sender_ip;
-                entry->second.is_gateway = hb.is_gateway;
+                entry->second.node_type = hb.node_type;
                 entry->second.has_connection = hb.has_connection;
                 entry->second.etx_gw = hb.etx_gw;
                 entry->second.gw_next_node = hb.gw_next_node;
@@ -272,13 +283,15 @@ namespace Loon
 
             // if etx_gw + etx is smaller than my etx_gw, update my etx_gw
             // if we're a gateway, we don't need to update etx_gw, so we can save this time
+            // exclude clients in the routing to gateways
             uint32_t test_etx = 0;
-            if (!IsGateway() && itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0)
+            if ((GetType() != LoonNodeType::GATEWAY) && (itr->second.node_type != LoonNodeType::CLIENT) &&
+                itr->second.reverse_delivery_ratio != 0 && itr->second.forward_delivery_ratio != 0)
             {
                 test_etx = (1.0 / (itr->second.reverse_delivery_ratio * itr->second.forward_delivery_ratio));
 
                 // if the neighbor isn't a gateway, include their advertised etx to a gateway
-                if (!itr->second.is_gateway)
+                if (itr->second.node_type != LoonNodeType::GATEWAY)
                 {
                     test_etx += itr->second.etx_gw;
                 }
@@ -286,9 +299,10 @@ namespace Loon
                 // this is our new connection if we haven't found a connection OR this is a lower ETX than our existing connection
                 // AND the other node is either a gateway or has connection to a gateawy
                 // AND if this route does not refer to us as the next hop (avoid count to infinity)
+                // AND the other node is not a client (avoid routing through clients)
                 if ((test_etx < etx_gw || !found_connection) &&
-                    (itr->second.has_connection || itr->second.is_gateway) &&
-                    (itr->second.gw_next_node != GetId()))
+                    (itr->second.has_connection || (itr->second.node_type == LoonNodeType::GATEWAY)) &&
+                    (itr->second.gw_next_node != GetId()) && (itr->second.node_type != LoonNodeType::CLIENT))
                 {
                     etx_gw = test_etx;
                     gw_next_node = itr->first;
@@ -300,11 +314,11 @@ namespace Loon
         }
 
         // update our connected status
-        connected = IsGateway() ? true : found_connection;
+        connected = (GetType() == LoonNodeType::GATEWAY) ? true : found_connection;
 
         // create my heartbeat message
         hb.SenderId = GetId();
-        hb.is_gateway = IsGateway();
+        hb.node_type = GetType();
         hb.has_connection = connected;
         hb.etx_gw = etx_gw;
         hb.gw_next_node = gw_next_node;
