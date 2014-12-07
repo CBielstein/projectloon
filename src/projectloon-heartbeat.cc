@@ -340,7 +340,7 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
 
 // address refers to node that you're sending to
 static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
-                             uint32_t pktCount, Time pktInterval, Ipv4Address& address )
+                             uint32_t pktCount, Time pktInterval, Ipv4Address& finalDest )
 {
   if (pktCount > 0)
     {
@@ -349,8 +349,8 @@ static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
 
       // Create the LoonHeader
       LoonHeader header;
-      header.SetDest(address.Get());
-      header.SetFinalDest(address.Get());
+      header.SetDest(finalDest.Get());
+      header.SetFinalDest(finalDest.Get());
 
       //Create the LoonTag
       LoonTag tag;
@@ -363,14 +363,16 @@ static void GenerateTrafficSpecific (Ptr<Socket> socket, uint32_t pktSize,
       packet->AddHeader(header);
       packet->AddPacketTag(tag);
 
+      Ptr<Packet> packet2 = getNextHopPacket(packet, socket->GetNode(), finalDest);
+
       // not really sure what the flag is.... so I chose 16 lol
-      int test = socket->SendTo (packet, 16, InetSocketAddress (address, 88));
+      int test = socket->SendTo (packet, 16, InetSocketAddress (GetNextDestOfPacket(packet2), otherPort));
       if (test == -1) {
         NS_LOG(ns3::LOG_DEBUG, "SendTo failed");
       }
       Simulator::Schedule (pktInterval, &GenerateTrafficSpecific,
-                           socket, pktSize,pktCount-1, pktInterval, address);
-      NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left to send to address "<< address);
+                           socket, pktSize,pktCount-1, pktInterval, finalDest);
+      NS_LOG(ns3::LOG_DEBUG, pktCount-1 << " packets left to send to address " << finalDest);
       packetsSent[socket->GetNode()->GetId()]++;
     }
   else
