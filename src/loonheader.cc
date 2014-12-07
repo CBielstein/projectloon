@@ -95,3 +95,15 @@ LoonHeader::GetStartPerimeterRoutingDistance (void) const
 {
   return startPerimeterRoutingDistance;
 }
+
+void
+LoonHeader::SetStartPerimeterRoutingLocation (ns3::Vector3D startLocation)
+{
+  startPerimeterRoutingLocation = startLocation;
+}
+
+ns3::Vector3D
+LoonHeader::GetStartPerimeterRoutingLocation()
+{ 
+  return startPerimeterRoutingLocation;
+}

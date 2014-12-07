@@ -2,6 +2,7 @@
 #include "ns3/ptr.h"
 #include "ns3/packet.h"
 #include "ns3/header.h"
+#include "ns3/core-module.h"
 #include <iostream>
 
 using namespace ns3;
@@ -28,8 +29,11 @@ public:
   virtual void SetRoutingModeGreedy (bool m);
   virtual void SetStartPerimeterRoutingDistance(double distance);
   virtual double GetStartPerimeterRoutingDistance (void) const;
+  virtual void SetStartPerimeterRoutingLocation(ns3::Vector3D startLocation);
+  virtual ns3::Vector3D GetStartPerimeterRoutingLocation();
 private:
   uint32_t dest;
   double startPerimeterRoutingDistance;
   bool greedy = true;
+  ns3::Vector3D startPerimeterRoutingLocation;
 };
