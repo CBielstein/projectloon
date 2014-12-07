@@ -253,8 +253,8 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
          NS_LOG(ns3::LOG_DEBUG, "RECEIVED AT GATEWAY! YAY!");
          return NULL;
        }
-        NS_LOG(ns3::LOG_DEBUG, "ETX routing to gateway");
         nextHop = current->GetAddress(current->GetNextHopId());
+    NS_LOG(ns3::LOG_DEBUG, "ETX routing to gateway" << nextHop << " " << current->GetIpv4Addr());
     }
 
     if(nextHop.IsEqual(current->GetIpv4Addr()))
