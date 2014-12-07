@@ -42,6 +42,7 @@
 #include "client.h"
 #include "defines.h"
 #include "loonheader.h"
+#include "loontag.h"
 
 NS_LOG_COMPONENT_DEFINE ("LoonHeartbeat");
 
@@ -68,6 +69,7 @@ std::vector<uint16_t> packetsReceivedPerLoon;
 std::vector<uint16_t> packetsReceivedForward;
 std::vector<uint16_t> packetsForwarded;
 std::vector<uint16_t> packetsSent;
+std::vector<uint16_t> hopCount;
 
 
 // ** Define helper functions **
@@ -228,11 +230,10 @@ static Ptr<Packet> getNextHopPacket(Ptr<Packet> packet, Ptr<Node> currentNode, I
 	        current->GetNextPerimeterNode(dest_location, start_location);
 	    }
 	}
-    } else {*/
-    /* if(current->GetType() == LoonNodeType::GATEWAY) {
-         return NULL;
-       }
-    */
+    } else {
+      if(current->GetType() == LoonNodeType::GATEWAY) {
+        return NULL;
+      }*/
         nextHop = current->GetAddress(current->GetNextHopId());
 //    }
 
@@ -262,8 +263,12 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
       packetsReceivedForward[node->GetId()]++;
 
       if (finalDest == addr) {
-        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId());
+        LoonTag tag;
+        packet->PeekPacketTag(tag);
+        NS_LOG(ns3::LOG_DEBUG, "GENERAL: Packet received at final destination, node " << node->GetId()
+               << " with hop count " << tag.GetHopCount());
         packetsReceivedPerLoon[node->GetId()]++;
+        hopCount.push_back(tag.GetHopCount());
       } else {
         NS_LOG(ns3::LOG_DEBUG, "GENERAL: Received one packet at node " << socket->GetNode()->GetId() << " intended for " << finalDest);
         Ptr<Packet> packet2 = getNextHopPacket(packet, node, finalDest);
@@ -271,7 +276,11 @@ void ReceiveGeneralPacket(Ptr<Socket> socket)
           NS_LOG(ns3::LOG_DEBUG, "packet has a final destination that is not in our network. Drop it!");
           return;
         }
+        LoonTag tag;
+        packet2->PeekPacketTag(tag);
 	packet2->RemoveAllPacketTags();
+        tag.IncrementHopCount();
+        packet2->AddPacketTag(tag);
         sources[node->GetId()]->SendTo (packet2, 16, InetSocketAddress(GetNextDestOfPacket(packet2), otherPort));
 	packetsForwarded[node->GetId()]++;
       }
@@ -327,7 +336,9 @@ static void GenerateTrafficMultiHop (Ptr<Socket> socket, uint32_t pktSize,
       LoonHeader header;
       header.SetDest(address.Get());
       header.SetFinalDest(address.Get());
+      LoonTag tag;
       packet->AddHeader(header);
+      packet->AddPacketTag(tag);
 
       // not really sure what the flag is.... so I chose 16 lol
       int test = socket->Send(packet);
@@ -784,6 +795,11 @@ int main (int argc, char *argv[])
            << packetsReceivedForward[i] << " total packets, and received "
            << packetsReceivedPerLoon[i] << " as the final destination");
   }
+  uint16_t total = 0;
+  for (std::vector<uint16_t>::size_type i = 0; i != hopCount.size(); ++i) {
+    total = total + hopCount[i];
+  }
+  NS_LOG(ns3::LOG_DEBUG, "Average hop count of: " << (total/hopCount.size()));
 /*  NS_LOG(ns3::LOG_DEBUG, "--Individual metrics--");
   NS_LOG(ns3::LOG_DEBUG, "Packets received at final destination: ");
   for (std::vector<uint16_t>::size_type i = 0; i != packetsReceivedPerLoon.size(); ++i) {
