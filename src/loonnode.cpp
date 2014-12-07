@@ -166,11 +166,19 @@ namespace Loon
     {
         ns3::Ipv4Address nearestNeighbor;
         nearestNeighbor = this->GetIpv4Addr();
-        double closestDistance = CalculateDistance(destinationPosition, this->GetPosition());
+        ns3::Vector3D thisPosition = this->GetPosition();
+
+        // toss out the third dimension
+        // this is okay because we MUST go to the balloons for routing, so we should not go to perimeter routing needles
+        thisPosition.z = 0;
+        destinationPosition.z = 0;
+
+        double closestDistance = CalculateDistance(destinationPosition, thisPosition);
         for(std::map<uint32_t, struct Neighbor>::iterator it = neighbors.begin(); it!=neighbors.end(); ++it)
         {
             Neighbor neighbor = it->second;
             ns3::Vector3D neighbPosition = neighbor.position;
+            neighbPosition.z = 0;
             double distance = CalculateDistance(destinationPosition, neighbPosition);
             if(distance < closestDistance)
             {
